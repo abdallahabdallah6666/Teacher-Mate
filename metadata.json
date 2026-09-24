@@ -1,0 +1,6 @@
+{
+  "name": "Teacher Companion",
+  "description": "AI-Powered Workspace for Algerian Primary Educators (3AP, 4AP, 5AP)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
