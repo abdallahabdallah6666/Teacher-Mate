@@ -43,8 +43,11 @@ type ChargilyOrder = {
   userEmail: string;
   userName: string;
   amount: number;
-  licenseKey: string;
+  licenseKey?: string;
   status: 'pending' | 'paid' | 'failed';
+  fulfillmentStatus: 'pending' | 'license_created' | 'email_sent';
+  licenseSeatLicenseId?: string;
+  resendEmailId?: string;
   createdAt: string;
 };
 const chargilyOrders = new Map<string, ChargilyOrder>();
@@ -1181,6 +1184,94 @@ app.post("/api/gemini/worksheet", async (req, res) => {
   }
 });
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character] as string);
+}
+
+function getLicenseSeatPlanKey(planId: string): string | undefined {
+  const planKeys: Record<string, string | undefined> = {
+    single: process.env.LICENSESEAT_PLAN_KEY_SINGLE,
+    pro: process.env.LICENSESEAT_PLAN_KEY_PRO,
+    school: process.env.LICENSESEAT_PLAN_KEY_SCHOOL
+  };
+  return planKeys[planId]?.trim();
+}
+
+async function createLicenseSeatLicense(order: ChargilyOrder, checkoutId: string) {
+  const secret = process.env.LICENSESEAT_SECRET_KEY?.trim();
+  const productSlug = process.env.LICENSESEAT_PRODUCT_SLUG?.trim();
+  const planKey = getLicenseSeatPlanKey(order.planId);
+  if (!secret || !productSlug || !planKey) {
+    throw new Error('LicenseSeat server secret, product slug, and plan key must be configured.');
+  }
+
+  const response = await fetch(`https://licenseseat.com/api/v1/products/${encodeURIComponent(productSlug)}/licenses`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${secret}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      plan_key: planKey,
+      metadata: {
+        order_id: order.orderId,
+        payment_provider: 'Chargily Pay V2',
+        chargily_checkout_id: checkoutId,
+        buyer_email: order.userEmail,
+        buyer_name: order.userName
+      }
+    })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (response.status !== 201) {
+    console.error('LicenseSeat license creation failed:', response.status, result?.error?.code || 'provider_error');
+    throw new Error('LicenseSeat could not create the purchased license.');
+  }
+  const license = result.license || result;
+  if (typeof license.key !== 'string' || !license.key.trim()) {
+    console.error('LicenseSeat create response did not include a key.');
+    throw new Error('LicenseSeat returned an incomplete license response.');
+  }
+  return {
+    key: license.key.trim(),
+    id: typeof license.id === 'string' ? license.id : undefined,
+    expiresAt: typeof license.expires_at === 'string' ? license.expires_at : undefined,
+    seatLimit: Number.isInteger(license.seat_limit) ? license.seat_limit : undefined
+  };
+}
+
+async function sendLicenseEmail(order: ChargilyOrder, licenseKey: string) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.LICENSE_EMAIL_FROM?.trim();
+  if (!apiKey || !from) throw new Error('Resend API key and verified LICENSE_EMAIL_FROM must be configured.');
+
+  const safeName = escapeHtml(order.userName || order.userEmail);
+  const safeKey = escapeHtml(licenseKey);
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': `teacher-mate-license-${order.orderId}`
+    },
+    body: JSON.stringify({
+      from,
+      to: [order.userEmail],
+      subject: 'Your Teacher Mate license key',
+      text: `Hello ${order.userName || 'Teacher'},\n\nThank you for your purchase. Your license key is:\n\n${licenseKey}\n\nKeep this key safe and enter it in Teacher Mate to activate your license.\n\nTeacher Mate Support`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#1e293b"><h2>Your Teacher Mate license</h2><p>Hello ${safeName},</p><p>Thank you for your purchase. Your license key is:</p><p style="font-family:monospace;font-size:20px;font-weight:bold;letter-spacing:1px;background:#f1f5f9;padding:16px;border-radius:8px">${safeKey}</p><p>Keep this key safe and enter it in Teacher Mate to activate your license.</p><p>Teacher Mate Support</p></div>`
+    })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || typeof result.id !== 'string') {
+    console.error('Resend delivery failed:', response.status, result?.name || result?.message || 'provider_error');
+    throw new Error('Resend could not send the license email.');
+  }
+  return result.id as string;
+}
+
 // Chargily Pay V2: create a checkout, then fulfill only from a signed paid webhook.
 app.post("/api/checkout/chargily", async (req, res) => {
   try {
@@ -1195,10 +1286,16 @@ app.post("/api/checkout/chargily", async (req, res) => {
     if (!plan || !cleanEmail || !/^\S+@\S+\.\S+$/.test(cleanEmail)) {
       return res.status(400).json({ error: "A valid plan and customer email are required." });
     }
+    if (!process.env.LICENSESEAT_SECRET_KEY?.trim()
+      || !process.env.LICENSESEAT_PRODUCT_SLUG?.trim()
+      || !getLicenseSeatPlanKey(planId)
+      || !process.env.RESEND_API_KEY?.trim()
+      || !process.env.LICENSE_EMAIL_FROM?.trim()) {
+      return res.status(503).json({ error: "License fulfillment and email delivery are not fully configured." });
+    }
 
     const appUrl = process.env.APP_URL?.trim() || `${req.protocol}://${req.get('host')}`;
     const orderId = randomUUID();
-    const licenseKey = generateLicenseKey(planId.toUpperCase());
     const baseUrl = chargilyKey.startsWith('test_sk_')
       ? 'https://pay.chargily.net/test/api/v2'
       : 'https://pay.chargily.net/api/v2';
@@ -1227,8 +1324,7 @@ app.post("/api/checkout/chargily", async (req, res) => {
           userEmail: cleanEmail,
           userName: typeof userName === 'string' ? userName.trim() : '',
           planId,
-          amountDZD: plan.priceDZD,
-          licenseKey
+          amountDZD: plan.priceDZD
         }
       })
     });
@@ -1246,8 +1342,8 @@ app.post("/api/checkout/chargily", async (req, res) => {
       userEmail: cleanEmail,
       userName: typeof userName === 'string' ? userName.trim() : '',
       amount: plan.priceDZD,
-      licenseKey,
       status: 'pending',
+      fulfillmentStatus: 'pending',
       createdAt: new Date().toISOString()
     };
     chargilyOrders.set(orderId, order);
@@ -1265,10 +1361,13 @@ app.get("/api/checkout/chargily/status/:orderId", (req, res) => {
   const order = chargilyOrders.get(req.params.orderId);
   if (!order) return res.status(404).json({ status: 'unknown' });
   if (order.status !== 'paid') return res.json({ status: order.status });
-  return res.json({ status: 'paid', licenseKey: order.licenseKey });
+  return res.json({
+    status: 'paid',
+    emailSent: order.fulfillmentStatus === 'email_sent'
+  });
 });
 
-app.post("/api/webhooks/chargily", (req, res) => {
+app.post("/api/webhooks/chargily", async (req, res) => {
   const secret = process.env.CHARGILY_SECRET_KEY?.trim();
   const signature = req.get('signature');
   const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
@@ -1308,61 +1407,73 @@ app.post("/api/webhooks/chargily", (req, res) => {
       && order.orderId === orderId
       && order.planId === planId
       && order.userEmail === String(metadata.userEmail || '').trim().toLowerCase()
-      && order.licenseKey === metadata.licenseKey
     );
 
     if (!plan || checkout.status !== 'paid' || checkout.currency !== 'dzd'
       || !Number.isInteger(expectedAmount) || expectedAmount <= 0
       || Number(checkout.amount) !== expectedAmount
       || typeof orderId !== 'string'
-      || typeof metadata.licenseKey !== 'string'
       || typeof metadata.userEmail !== 'string'
       || !metadataMatchesOrder) {
       console.error('Rejected inconsistent signed Chargily paid event:', event.id);
       return res.status(400).json({ error: 'Paid checkout data does not match the expected order.' });
     }
 
-    {
-      const cleanEmail = metadata.userEmail.trim().toLowerCase();
-      const licenseKey = metadata.licenseKey;
-      const userName = typeof metadata.userName === 'string' ? metadata.userName : '';
-      const amount = Number(checkout.amount);
-      const paidOrder: ChargilyOrder = {
-        orderId: typeof orderId === 'string' ? orderId : (order?.orderId || checkout.id),
-        checkoutId: checkout.id,
-        planId,
-        userEmail: cleanEmail,
-        userName,
-        amount,
-        licenseKey,
-        status: 'paid',
-        createdAt: order?.createdAt || new Date().toISOString()
-      };
-      chargilyOrders.set(paidOrder.orderId, paidOrder);
-      chargilyOrderByCheckoutId.set(checkout.id, paidOrder.orderId);
+    const cleanEmail = metadata.userEmail.trim().toLowerCase();
+    const userName = typeof metadata.userName === 'string' ? metadata.userName : '';
+    const paidOrder: ChargilyOrder = order || {
+      orderId,
+      checkoutId: checkout.id,
+      planId,
+      userEmail: cleanEmail,
+      userName,
+      amount: Number(checkout.amount),
+      status: 'paid',
+      fulfillmentStatus: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    paidOrder.status = 'paid';
+    chargilyOrders.set(paidOrder.orderId, paidOrder);
+    chargilyOrderByCheckoutId.set(checkout.id, paidOrder.orderId);
 
-      if (!dbLicenses.has(licenseKey)) {
-        dbLicenses.set(licenseKey, {
-          id: `lic-${paidOrder.orderId}`,
-          key: licenseKey,
+    try {
+      if (!paidOrder.licenseKey) {
+        const createdLicense = await createLicenseSeatLicense(paidOrder, checkout.id);
+        paidOrder.licenseKey = createdLicense.key;
+        paidOrder.licenseSeatLicenseId = createdLicense.id;
+        paidOrder.fulfillmentStatus = 'license_created';
+        chargilyOrders.set(paidOrder.orderId, paidOrder);
+
+        dbLicenses.set(createdLicense.key, {
+          id: createdLicense.id || `lic-${paidOrder.orderId}`,
+          key: createdLicense.key,
           plan: planId,
           userEmail: cleanEmail,
           userName,
           status: 'active',
           issuedAt: new Date().toISOString().split('T')[0],
-          expiresAt: '2027-09-01',
-          paidVia: 'Chargily Pay v2 (Edahabia/CIB)',
-          amountDZD: amount,
-          maxDevices: planId === 'school' ? 10 : planId === 'pro' ? 3 : 1
+          expiresAt: createdLicense.expiresAt || '2027-09-01',
+          paidVia: 'Chargily Pay V2 / LicenseSeat',
+          amountDZD: Number(checkout.amount),
+          maxDevices: createdLicense.seatLimit || (planId === 'school' ? 10 : planId === 'pro' ? 3 : 1)
         });
+
+        const user = dbUsers.get(cleanEmail);
+        if (user) {
+          user.licenseKey = createdLicense.key;
+          user.licenseStatus = 'active';
+          user.licensePlan = planId;
+        }
       }
 
-      const user = dbUsers.get(cleanEmail);
-      if (user) {
-        user.licenseKey = licenseKey;
-        user.licenseStatus = 'active';
-        user.licensePlan = planId;
+      if (paidOrder.fulfillmentStatus !== 'email_sent') {
+        paidOrder.resendEmailId = await sendLicenseEmail(paidOrder, paidOrder.licenseKey!);
+        paidOrder.fulfillmentStatus = 'email_sent';
+        chargilyOrders.set(paidOrder.orderId, paidOrder);
       }
+    } catch (fulfillmentError: any) {
+      console.error('Paid checkout fulfillment is incomplete:', fulfillmentError?.message || fulfillmentError);
+      return res.status(500).json({ error: 'Payment received; license delivery will be retried.' });
     }
   } else if (event.type === 'checkout.failed' || event.type === 'checkout.canceled') {
     const checkout = event.data || {};
@@ -1379,34 +1490,54 @@ app.post("/api/webhooks/chargily", (req, res) => {
 });
 
 // Verify License Key endpoint
-app.post("/api/license/verify", (req, res) => {
+app.post("/api/license/verify", async (req, res) => {
   const { licenseKey, userEmail } = req.body;
   if (!licenseKey) {
     return res.status(400).json({ valid: false, message: "الرجاء أدخل مفتاح التفعيل" });
   }
 
+  const secret = process.env.LICENSESEAT_SECRET_KEY?.trim();
+  const productSlug = process.env.LICENSESEAT_PRODUCT_SLUG?.trim();
+  if (!secret || !productSlug) {
+    return res.status(503).json({ valid: false, message: "License verification is not configured." });
+  }
+
   const cleanKey = licenseKey.trim().toUpperCase();
-  const license = dbLicenses.get(cleanKey);
-  if (license && license.status === 'active') {
+  try {
+    const validationResponse = await fetch(`https://licenseseat.com/api/v1/products/${encodeURIComponent(productSlug)}/licenses/validate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${secret}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ license_key: cleanKey })
+    });
+    const validation = await validationResponse.json().catch(() => ({}));
+    if (!validationResponse.ok || validation.valid !== true) {
+      return res.status(400).json({ valid: false, message: "مفتاح التفعيل غير صحيح أو منتهي الصلاحية" });
+    }
+
+    const license = validation.license || {};
     // Save to user profile if provided
     const cleanEmail = typeof userEmail === 'string' ? userEmail.trim().toLowerCase() : '';
     if (cleanEmail && dbUsers.has(cleanEmail)) {
       const u = dbUsers.get(cleanEmail);
       u.licenseKey = cleanKey;
       u.licenseStatus = 'active';
-      u.licensePlan = license.plan;
+      u.licensePlan = license.plan_key || u.licensePlan;
       dbUsers.set(cleanEmail, u);
     }
     return res.json({
       valid: true,
       licenseKey: cleanKey,
       status: 'active',
-      planName: license.plan === 'school' ? 'المؤسسات التعليمية' : 'جميع السنوات (شامل)',
-      expiryDate: license.expiresAt
+      planName: license.plan_key || 'Teacher Mate',
+      expiryDate: license.expires_at || null
     });
+  } catch (err: any) {
+    console.error('LicenseSeat verification request failed:', err?.message || err);
+    return res.status(502).json({ valid: false, message: "تعذر التحقق من مفتاح الرخصة حالياً" });
   }
-
-  res.status(400).json({ valid: false, message: "مفتاح التفعيل غير صحيح أو منتهي الصلاحية" });
 });
 
 // Vite & Static file serving setup

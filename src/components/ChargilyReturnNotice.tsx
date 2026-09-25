@@ -1,14 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Copy, LoaderCircle, X } from 'lucide-react';
+import { CheckCircle2, LoaderCircle, Mail, X } from 'lucide-react';
 import { Language } from './Navbar';
 
 type Props = { lang: Language };
-type PaymentState = 'idle' | 'checking' | 'pending' | 'paid' | 'failed' | 'error';
+type PaymentState = 'idle' | 'checking' | 'pending' | 'fulfillment_pending' | 'paid' | 'failed' | 'error';
 
 export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
   const [state, setState] = useState<PaymentState>('idle');
-  const [licenseKey, setLicenseKey] = useState('');
-  const [copied, setCopied] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [orderId, setOrderId] = useState('');
   const isArabic = lang === 'ar';
@@ -36,11 +34,11 @@ export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
         const response = await fetch(`/api/checkout/chargily/status/${encodeURIComponent(orderId)}`, { cache: 'no-store' });
         const result = await response.json();
         if (cancelled) return;
-        if (result.status === 'paid' && result.licenseKey) {
-          setLicenseKey(result.licenseKey);
+        if (result.status === 'paid' && result.emailSent === true) {
           setState('paid');
           return;
         }
+        if (result.status === 'paid') setState('fulfillment_pending');
         if (result.status === 'failed') {
           setState('failed');
           return;
@@ -75,23 +73,20 @@ export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
     setState('idle');
   };
 
-  const copyKey = async () => {
-    if (!licenseKey) return;
-    await navigator.clipboard.writeText(licenseKey);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  };
-
   const title = state === 'paid'
-    ? (isArabic ? 'تم تأكيد الدفع' : isFrench ? 'Paiement confirmé' : 'Payment confirmed')
+    ? (isArabic ? 'تم الدفع وإرسال الرخصة' : isFrench ? 'Paiement confirmé et licence envoyée' : 'Payment confirmed; license emailed')
     : state === 'failed'
     ? (isArabic ? 'لم يكتمل الدفع' : isFrench ? 'Paiement non terminé' : 'Payment not completed')
+    : state === 'fulfillment_pending'
+    ? (isArabic ? 'تم تأكيد الدفع' : isFrench ? 'Paiement confirmé' : 'Payment confirmed')
     : (isArabic ? 'جارٍ تأكيد الدفع' : isFrench ? 'Confirmation du paiement' : 'Confirming payment');
 
   const message = state === 'paid'
-    ? (isArabic ? 'وصل تأكيد Chargily الآمن. احتفظ بمفتاح التفعيل أدناه، ثم سجّل الدخول باستخدام البريد وكلمة المرور اللذين أنشأتهما.' : isFrench ? 'Chargily a confirmé le paiement. Conservez votre clé ci-dessous, puis connectez-vous avec l’adresse e-mail et le mot de passe créés.' : 'Chargily confirmed your payment. Save the activation key below, then sign in with the email and password you created.')
+    ? (isArabic ? 'تم إنشاء مفتاحك في LicenseSeat وإرساله إلى بريدك الإلكتروني. إذا لم تجده، تحقق من مجلد الرسائل غير المرغوب فيها.' : isFrench ? 'Votre clé a été créée dans LicenseSeat et envoyée par e-mail. Vérifiez les courriers indésirables si nécessaire.' : 'Your LicenseSeat key has been created and emailed to you. Check your spam folder if it does not arrive.')
     : state === 'failed'
     ? (isArabic ? 'لم يتم تأكيد الدفع. لم تُصدر أي رخصة. يمكنك المحاولة مجدداً من صفحة الاشتراك.' : isFrench ? 'Le paiement n’a pas été confirmé. Aucune licence n’a été émise. Vous pouvez réessayer depuis la page des abonnements.' : 'Payment was not confirmed, so no license was issued. You can try again from the pricing page.')
+    : state === 'fulfillment_pending'
+    ? (isArabic ? 'تم تأكيد الدفع. يجري الآن إنشاء الرخصة وإرسالها إلى بريدك الإلكتروني.' : isFrench ? 'Le paiement est confirmé. La licence est en cours de création et sera envoyée par e-mail.' : 'Payment is confirmed. Your license is being created and emailed now.')
     : (isArabic ? 'ننتظر إشعار الدفع الموقّع من Chargily. لا تغلق الصفحة؛ لا يتم إصدار الرخصة قبل وصول التأكيد.' : isFrench ? 'Nous attendons la notification signée de Chargily. Gardez cette page ouverte ; la licence ne sera émise qu’après confirmation.' : 'Waiting for Chargily’s signed payment notification. Keep this page open; a license is issued only after confirmation.');
 
   return (
@@ -107,15 +102,10 @@ export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
         <p className="mt-3 text-center text-sm leading-6 text-slate-600">{message}</p>
 
         {state === 'paid' && (
-          <div className="mt-5 flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-            <code className="break-all font-mono text-sm font-bold tracking-wide text-slate-900">{licenseKey}</code>
-            <button onClick={copyKey} className="shrink-0 rounded-md p-2 text-teal-700 hover:bg-white" aria-label={copied ? 'Copied' : 'Copy license key'}>
-              <Copy className="h-4 w-4" />
-            </button>
-          </div>
+          <div className="mt-5 flex justify-center text-emerald-700"><Mail className="h-5 w-5" /></div>
         )}
 
-        {(state === 'checking' || state === 'pending' || state === 'error') && (
+        {(state === 'checking' || state === 'pending' || state === 'fulfillment_pending' || state === 'error') && (
           <button onClick={() => setAttempt(value => value + 1)} className="mt-5 w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-bold text-white hover:bg-teal-800">
             {isArabic ? 'التحقق من الحالة مجدداً' : isFrench ? 'Vérifier à nouveau' : 'Check status again'}
           </button>
