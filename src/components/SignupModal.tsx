@@ -150,6 +150,7 @@ export const SignupModal: React.FC<SignupModalProps> = ({
       }
 
       const registeredUser: UserProfile = regJson.user;
+      checkoutAttempted = true;
       const checkoutRes = await fetch('/api/checkout/chargily', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -162,7 +163,6 @@ export const SignupModal: React.FC<SignupModalProps> = ({
         })
       });
 
-      checkoutAttempted = true;
       const checkoutJson = await checkoutRes.json();
       if (!checkoutRes.ok || !checkoutJson.checkoutUrl) {
         if (checkoutJson.needsSupport && checkoutJson.orderId) {
