@@ -8,6 +8,7 @@ import { LoginModal } from './components/LoginModal';
 import { SignupModal } from './components/SignupModal';
 import { TeacherHub } from './components/TeacherHub';
 import { AdminDashboard } from './components/AdminDashboard';
+import { ChargilyReturnNotice } from './components/ChargilyReturnNotice';
 import { Footer } from './components/Footer';
 import { UserProfile, LicensePlan } from './types';
 
@@ -168,6 +169,8 @@ export default function App() {
         selectedPlanForCheckout={selectedPlanForCheckout}
         onSignupSuccess={handleSignupSuccess}
       />
+
+      <ChargilyReturnNotice lang={activeLang} />
 
     </div>
   );
