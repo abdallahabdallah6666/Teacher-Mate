@@ -3,7 +3,7 @@ import { CheckCircle2, LoaderCircle, Mail, X } from 'lucide-react';
 import { Language } from './Navbar';
 
 type Props = { lang: Language };
-type PaymentState = 'idle' | 'checking' | 'pending' | 'fulfillment_pending' | 'paid' | 'failed' | 'error';
+type PaymentState = 'idle' | 'checking' | 'pending' | 'fulfillment_pending' | 'support_required' | 'paid' | 'failed' | 'error';
 
 export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
   const [state, setState] = useState<PaymentState>('idle');
@@ -16,15 +16,13 @@ export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
     const params = new URLSearchParams(window.location.search);
     const currentOrderId = params.get('chargily_order') || '';
     setOrderId(currentOrderId);
-    if (params.get('payment_failed') === '1') {
-      setState('failed');
-    } else if (currentOrderId) {
+    if (currentOrderId) {
       setState('checking');
     }
   }, []);
 
   useEffect(() => {
-    if (!orderId || state === 'failed' || state === 'paid' || state === 'idle') return;
+    if (!orderId || state === 'failed' || state === 'paid' || state === 'support_required' || state === 'idle') return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let checks = 0;
@@ -36,6 +34,10 @@ export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
         if (cancelled) return;
         if (result.status === 'paid' && result.emailSent === true) {
           setState('paid');
+          return;
+        }
+        if (result.needsSupport === true) {
+          setState('support_required');
           return;
         }
         if (result.status === 'paid') setState('fulfillment_pending');
@@ -79,6 +81,8 @@ export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
     ? (isArabic ? 'لم يكتمل الدفع' : isFrench ? 'Paiement non terminé' : 'Payment not completed')
     : state === 'fulfillment_pending'
     ? (isArabic ? 'تم تأكيد الدفع' : isFrench ? 'Paiement confirmé' : 'Payment confirmed')
+    : state === 'support_required'
+    ? (isArabic ? 'تم استلام الدفع' : isFrench ? 'Paiement reçu' : 'Payment received')
     : (isArabic ? 'جارٍ تأكيد الدفع' : isFrench ? 'Confirmation du paiement' : 'Confirming payment');
 
   const message = state === 'paid'
@@ -87,6 +91,8 @@ export const ChargilyReturnNotice: React.FC<Props> = ({ lang }) => {
     ? (isArabic ? 'لم يتم تأكيد الدفع. لم تُصدر أي رخصة. يمكنك المحاولة مجدداً من صفحة الاشتراك.' : isFrench ? 'Le paiement n’a pas été confirmé. Aucune licence n’a été émise. Vous pouvez réessayer depuis la page des abonnements.' : 'Payment was not confirmed, so no license was issued. You can try again from the pricing page.')
     : state === 'fulfillment_pending'
     ? (isArabic ? 'تم تأكيد الدفع. يجري الآن إنشاء الرخصة وإرسالها إلى بريدك الإلكتروني.' : isFrench ? 'Le paiement est confirmé. La licence est en cours de création et sera envoyée par e-mail.' : 'Payment is confirmed. Your license is being created and emailed now.')
+    : state === 'support_required'
+    ? (isArabic ? `تم استلام دفعتك، لكننا نحتاج إلى مراجعة حالة إصدار الرخصة. لا تدفع مرة أخرى. تواصل مع الدعم وأرسل رقم الطلب: ${orderId}` : isFrench ? `Votre paiement a été reçu, mais la livraison nécessite une vérification. Ne payez pas une seconde fois. Contactez le support avec la référence : ${orderId}` : `Your payment was received, but license delivery needs a check. Please do not pay again. Contact support and provide order reference ${orderId}.`)
     : (isArabic ? 'ننتظر إشعار الدفع الموقّع من Chargily. لا تغلق الصفحة؛ لا يتم إصدار الرخصة قبل وصول التأكيد.' : isFrench ? 'Nous attendons la notification signée de Chargily. Gardez cette page ouverte ; la licence ne sera émise qu’après confirmation.' : 'Waiting for Chargily’s signed payment notification. Keep this page open; a license is issued only after confirmation.');
 
   return (

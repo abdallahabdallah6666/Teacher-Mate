@@ -4,11 +4,28 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createPaymentStore,
+  definitiveCheckoutFailure,
+  definitiveLicenseFailure,
+  emailIdempotencyKey,
+  resendRetryIsSafe,
+  isStaleAttempt,
+  metadataMatches,
+  needsManualReconciliation,
+  PAYMENT_LEASE_MS,
+  PaymentOrder,
+  PaymentStore,
+  providerStatus,
+  safeCustomerEmail,
+  safeCustomerName,
+  safeError
+} from "./paymentStore";
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({
   verify: (req, _res, buffer) => {
@@ -36,23 +53,7 @@ function getGeminiClient() {
 const dbUsers = new Map<string, any>();
 const dbLicenses = new Map<string, any>();
 const dbInquiries = new Map<string, any>();
-type ChargilyOrder = {
-  orderId: string;
-  checkoutId: string;
-  planId: string;
-  userEmail: string;
-  userName: string;
-  amount: number;
-  licenseKey?: string;
-  status: 'pending' | 'paid' | 'failed';
-  fulfillmentStatus: 'pending' | 'license_created' | 'email_sent';
-  licenseSeatLicenseId?: string;
-  resendEmailId?: string;
-  createdAt: string;
-};
-const chargilyOrders = new Map<string, ChargilyOrder>();
-const chargilyOrderByCheckoutId = new Map<string, string>();
-const processedChargilyEvents = new Set<string>();
+const paymentStore: PaymentStore = createPaymentStore();
 
 // Seed clean database with only master admin account
 const initialUser = {
@@ -298,8 +299,13 @@ function generateLicenseKey(plan: string = 'PRO'): string {
 // ================= API ROUTES =================
 
 // Health check
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", service: "Teacher Companion Algeria Backend" });
+app.get("/api/health", async (_req, res) => {
+  try {
+    await paymentStore.ping();
+    res.json({ status: "ok", service: "Teacher Companion Algeria Backend", paymentStorage: 'ready' });
+  } catch {
+    res.status(503).json({ status: "unavailable", service: "Teacher Companion Algeria Backend", paymentStorage: 'unavailable' });
+  }
 });
 
 // Authentication endpoints
@@ -1199,7 +1205,7 @@ function getLicenseSeatPlanKey(planId: string): string | undefined {
   return planKeys[planId]?.trim();
 }
 
-async function createLicenseSeatLicense(order: ChargilyOrder, checkoutId: string) {
+async function createLicenseSeatLicense(order: PaymentOrder, checkoutId: string) {
   const secret = process.env.LICENSESEAT_SECRET_KEY?.trim();
   const productSlug = process.env.LICENSESEAT_PRODUCT_SLUG?.trim();
   const planKey = getLicenseSeatPlanKey(order.planId);
@@ -1213,6 +1219,7 @@ async function createLicenseSeatLicense(order: ChargilyOrder, checkoutId: string
       'Authorization': `Bearer ${secret}`,
       'Content-Type': 'application/json'
     },
+    signal: AbortSignal.timeout(15_000),
     body: JSON.stringify({
       plan_key: planKey,
       metadata: {
@@ -1227,7 +1234,9 @@ async function createLicenseSeatLicense(order: ChargilyOrder, checkoutId: string
   const result = await response.json().catch(() => ({}));
   if (response.status !== 201) {
     console.error('LicenseSeat license creation failed:', response.status, result?.error?.code || 'provider_error');
-    throw new Error('LicenseSeat could not create the purchased license.');
+    const failure = new Error('LicenseSeat could not create the purchased license.') as Error & { status?: number };
+    failure.status = response.status;
+    throw failure;
   }
   const license = result.license || result;
   if (typeof license.key !== 'string' || !license.key.trim()) {
@@ -1242,7 +1251,7 @@ async function createLicenseSeatLicense(order: ChargilyOrder, checkoutId: string
   };
 }
 
-async function sendLicenseEmail(order: ChargilyOrder, licenseKey: string) {
+async function sendLicenseEmail(order: PaymentOrder, licenseKey: string) {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const from = process.env.LICENSE_EMAIL_FROM?.trim();
   if (!apiKey || !from) throw new Error('Resend API key and verified LICENSE_EMAIL_FROM must be configured.');
@@ -1254,8 +1263,9 @@ async function sendLicenseEmail(order: ChargilyOrder, licenseKey: string) {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': `teacher-mate-license-${order.orderId}`
+      'Idempotency-Key': emailIdempotencyKey(order.orderId)
     },
+    signal: AbortSignal.timeout(15_000),
     body: JSON.stringify({
       from,
       to: [order.userEmail],
@@ -1267,226 +1277,281 @@ async function sendLicenseEmail(order: ChargilyOrder, licenseKey: string) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok || typeof result.id !== 'string') {
     console.error('Resend delivery failed:', response.status, result?.name || result?.message || 'provider_error');
-    throw new Error('Resend could not send the license email.');
+    const failure = new Error('Resend could not send the license email.') as Error & { status?: number };
+    failure.status = response.status;
+    throw failure;
   }
   return result.id as string;
 }
 
-// Chargily Pay V2: create a checkout, then fulfill only from a signed paid webhook.
+// Persist the checkout intent before contacting Chargily, so a process restart cannot lose its reference.
 app.post("/api/checkout/chargily", async (req, res) => {
+  let order: PaymentOrder | undefined;
   try {
     const chargilyKey = process.env.CHARGILY_SECRET_KEY?.trim();
     if (!chargilyKey || !/^(test|live)_sk_/.test(chargilyKey)) {
       return res.status(503).json({ error: "Chargily Pay is not configured with a valid V2 API secret key." });
     }
-
-    const { planId, userEmail, userName } = req.body || {};
+    const { planId, userEmail, userName, orderId: requestedOrderId } = req.body || {};
     const plan = dbPricingSettings.plans[planId as keyof typeof dbPricingSettings.plans];
     const cleanEmail = typeof userEmail === 'string' ? userEmail.trim().toLowerCase() : '';
-    if (!plan || !cleanEmail || !/^\S+@\S+\.\S+$/.test(cleanEmail)) {
-      return res.status(400).json({ error: "A valid plan and customer email are required." });
-    }
-    if (!process.env.LICENSESEAT_SECRET_KEY?.trim()
-      || !process.env.LICENSESEAT_PRODUCT_SLUG?.trim()
-      || !getLicenseSeatPlanKey(planId)
-      || !process.env.RESEND_API_KEY?.trim()
-      || !process.env.LICENSE_EMAIL_FROM?.trim()) {
+    if (!plan || !safeCustomerEmail(cleanEmail)) return res.status(400).json({ error: "A valid plan and customer email are required." });
+    if (!process.env.LICENSESEAT_SECRET_KEY?.trim() || !process.env.LICENSESEAT_PRODUCT_SLUG?.trim()
+      || !getLicenseSeatPlanKey(planId) || !process.env.RESEND_API_KEY?.trim() || !process.env.LICENSE_EMAIL_FROM?.trim()) {
       return res.status(503).json({ error: "License fulfillment and email delivery are not fully configured." });
     }
 
     const appUrl = process.env.APP_URL?.trim() || `${req.protocol}://${req.get('host')}`;
-    const orderId = randomUUID();
-    const baseUrl = chargilyKey.startsWith('test_sk_')
-      ? 'https://pay.chargily.net/test/api/v2'
-      : 'https://pay.chargily.net/api/v2';
+    const orderId = typeof requestedOrderId === 'string' && /^[0-9a-f-]{36}$/i.test(requestedOrderId)
+      ? requestedOrderId
+      : randomUUID();
+    const existing = await paymentStore.getOrder(orderId);
+    if (existing) {
+      if (existing.planId !== planId || existing.userEmail !== cleanEmail || existing.userName !== safeCustomerName(userName)) {
+        return res.status(409).json({ error: 'This checkout reference belongs to different order details. Start a new checkout request.' });
+      }
+      if (existing.checkoutStatus === 'active' && existing.checkoutUrl) {
+        return res.json({ success: true, checkoutUrl: existing.checkoutUrl, orderId });
+      }
+      if (existing.checkoutStatus === 'creating' && isStaleAttempt(existing.checkoutCreateStartedAt)) {
+        await paymentStore.updateOrder(orderId, { status: 'pending', checkoutStatus: 'unknown' });
+        return res.status(409).json({ error: 'The earlier checkout request may have succeeded. Do not start another payment; contact support with this order reference.', orderId, needsSupport: true });
+      }
+      if (existing.checkoutStatus === 'unknown') {
+        return res.status(409).json({ error: 'Checkout status is being reconciled. Do not start another payment; contact support with this order reference.', orderId, needsSupport: true });
+      }
+      if (existing.checkoutStatus === 'creating') {
+        return res.status(409).json({ error: 'Your checkout request is still being processed. Please wait a moment and retry with the same order reference.', orderId, pending: true });
+      }
+      return res.status(409).json({ error: 'This checkout could not be created. Start a fresh checkout request.', orderId, retryable: true });
+    }
+    order = {
+      orderId,
+      planId,
+      userEmail: cleanEmail,
+      userName: safeCustomerName(userName),
+      amount: plan.priceDZD,
+      status: 'creating',
+      checkoutStatus: 'creating',
+      fulfillmentStatus: 'pending',
+      checkoutCreateStartedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+    try {
+      await paymentStore.createOrder(order);
+    } catch (error) {
+      const racedOrder = await paymentStore.getOrder(orderId);
+      if (racedOrder) return res.status(409).json({ error: 'Checkout request already exists. Retry using the same order reference.', orderId, pending: true });
+      throw error;
+    }
+
+    const baseUrl = chargilyKey.startsWith('test_sk_') ? 'https://pay.chargily.net/test/api/v2' : 'https://pay.chargily.net/api/v2';
     const returnUrl = new URL('/', appUrl);
     returnUrl.searchParams.set('chargily_order', orderId);
     const failureUrl = new URL('/', appUrl);
     failureUrl.searchParams.set('chargily_order', orderId);
     failureUrl.searchParams.set('payment_failed', '1');
-
-    const chargilyRes = await fetch(`${baseUrl}/checkouts`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${chargilyKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        amount: plan.priceDZD,
-        currency: 'dzd',
-        success_url: returnUrl.toString(),
-        failure_url: failureUrl.toString(),
-        webhook_endpoint: new URL('/api/webhooks/chargily', appUrl).toString(),
-        locale: 'ar',
-        description: `Teacher Mate ${planId} subscription`,
-        metadata: {
-          orderId,
-          userEmail: cleanEmail,
-          userName: typeof userName === 'string' ? userName.trim() : '',
-          planId,
-          amountDZD: plan.priceDZD
-        }
-      })
-    });
-
-    const chargilyData = await chargilyRes.json().catch(() => ({}));
-    if (!chargilyRes.ok || !chargilyData.id || !chargilyData.checkout_url) {
-      console.error('Chargily checkout creation failed:', chargilyData);
-      return res.status(502).json({ error: "Chargily could not create the checkout. Please try again." });
+    let chargilyRes: Response;
+    try {
+      chargilyRes = await fetch(`${baseUrl}/checkouts`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${chargilyKey}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({
+          amount: plan.priceDZD,
+          currency: 'dzd',
+          success_url: returnUrl.toString(),
+          failure_url: failureUrl.toString(),
+          webhook_endpoint: new URL('/api/webhooks/chargily', appUrl).toString(),
+          locale: 'ar',
+          description: `Teacher Mate ${planId} subscription`,
+          metadata: { orderId, userEmail: cleanEmail, userName: order.userName, planId, amountDZD: plan.priceDZD }
+        })
+      });
+    } catch (error) {
+      await paymentStore.updateOrder(orderId, { status: 'pending', checkoutStatus: 'unknown' });
+      console.error('Chargily checkout outcome is unknown for order:', orderId.slice(0, 8), safeError(error));
+      return res.status(502).json({ error: "Checkout status is being reconciled. Please do not start another payment; contact support with your order reference.", orderId });
     }
 
-    const order: ChargilyOrder = {
-      orderId,
-      checkoutId: chargilyData.id,
-      planId,
-      userEmail: cleanEmail,
-      userName: typeof userName === 'string' ? userName.trim() : '',
-      amount: plan.priceDZD,
-      status: 'pending',
-      fulfillmentStatus: 'pending',
-      createdAt: new Date().toISOString()
-    };
-    chargilyOrders.set(orderId, order);
-    chargilyOrderByCheckoutId.set(chargilyData.id, orderId);
+    const data = await chargilyRes.json().catch(() => ({}));
+    if (!chargilyRes.ok || !data.id || !data.checkout_url) {
+      if (definitiveCheckoutFailure(chargilyRes.status)) {
+        await paymentStore.updateOrder(orderId, { status: 'failed', checkoutStatus: 'failed' });
+      } else {
+        await paymentStore.updateOrder(orderId, { status: 'pending', checkoutStatus: 'unknown' });
+      }
+      console.error('Chargily checkout creation failed:', chargilyRes.status);
+      return res.status(502).json({ error: chargilyRes.status < 500 ? "Chargily could not create the checkout." : "Checkout status is being reconciled; please contact support before trying again.", orderId });
+    }
 
-    return res.json({ success: true, checkoutUrl: chargilyData.checkout_url, orderId });
-  } catch (err: any) {
-    console.error('Chargily checkout initialization error:', err?.message || err);
-    return res.status(502).json({ error: "Unable to start the Chargily checkout right now." });
+    await paymentStore.updateOrder(orderId, { status: 'pending', checkoutStatus: 'active', checkoutId: data.id, checkoutUrl: data.checkout_url });
+    return res.json({ success: true, checkoutUrl: data.checkout_url, orderId });
+  } catch (error) {
+    console.error('Chargily checkout initialization failed:', safeError(error));
+    return res.status(503).json({ error: "Payment storage or checkout is temporarily unavailable. Please try again shortly." });
   }
 });
 
-app.get("/api/checkout/chargily/status/:orderId", (req, res) => {
+app.get("/api/checkout/chargily/status/:orderId", async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  const order = chargilyOrders.get(req.params.orderId);
-  if (!order) return res.status(404).json({ status: 'unknown' });
-  if (order.status !== 'paid') return res.json({ status: order.status });
-  return res.json({
-    status: 'paid',
-    emailSent: order.fulfillmentStatus === 'email_sent'
-  });
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.orderId)) return res.status(404).json({ status: 'unknown' });
+  try {
+    const order = await paymentStore.getOrder(req.params.orderId);
+    if (!order) return res.status(404).json({ status: 'unknown' });
+    return res.json({
+      status: order.status === 'creating' ? 'pending' : order.status,
+      emailSent: order.fulfillmentStatus === 'email_sent',
+      needsSupport: needsManualReconciliation(order)
+    });
+  } catch {
+    return res.status(503).json({ status: 'unavailable' });
+  }
 });
 
 app.post("/api/webhooks/chargily", async (req, res) => {
   const secret = process.env.CHARGILY_SECRET_KEY?.trim();
   const signature = req.get('signature');
   const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
-  if (!secret || !signature || !rawBody) {
-    return res.status(400).json({ error: 'Missing Chargily webhook signature or server configuration.' });
-  }
+  if (!secret || !signature || !rawBody) return res.status(400).json({ error: 'Missing Chargily webhook signature or server configuration.' });
 
   const expected = createHmac('sha256', secret).update(rawBody).digest();
   let received: Buffer;
-  try {
-    received = Buffer.from(signature, 'hex');
-  } catch {
-    return res.status(403).json({ error: 'Invalid webhook signature.' });
-  }
-  if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
-    return res.status(403).json({ error: 'Invalid webhook signature.' });
-  }
+  try { received = Buffer.from(signature, 'hex'); } catch { return res.status(403).json({ error: 'Invalid webhook signature.' }); }
+  if (received.length !== expected.length || !timingSafeEqual(received, expected)) return res.status(403).json({ error: 'Invalid webhook signature.' });
 
   const event = req.body;
-  if (!event || typeof event.id !== 'string' || typeof event.type !== 'string') {
+  if (!event || typeof event.id !== 'string' || event.id.length > 128 || event.id.includes('/') || typeof event.type !== 'string') {
     return res.status(400).json({ error: 'Invalid webhook event.' });
   }
-  if (processedChargilyEvents.has(event.id)) return res.status(200).json({ received: true, duplicate: true });
-
-  if (event.type === 'checkout.paid') {
-    const checkout = event.data || {};
-    const metadata = checkout.metadata || {};
-    const orderId = metadata.orderId;
-    const planId = metadata.planId;
-    const plan = dbPricingSettings.plans[planId as keyof typeof dbPricingSettings.plans];
-    const existingOrderId = typeof checkout.id === 'string' ? chargilyOrderByCheckoutId.get(checkout.id) : undefined;
-    const order = (typeof orderId === 'string' ? chargilyOrders.get(orderId) : undefined)
-      || (existingOrderId ? chargilyOrders.get(existingOrderId) : undefined);
-    const expectedAmount = Number(order?.amount ?? metadata.amountDZD);
-    const metadataMatchesOrder = !order || (
-      order.checkoutId === checkout.id
-      && order.orderId === orderId
-      && order.planId === planId
-      && order.userEmail === String(metadata.userEmail || '').trim().toLowerCase()
-    );
-
-    if (!plan || checkout.status !== 'paid' || checkout.currency !== 'dzd'
-      || !Number.isInteger(expectedAmount) || expectedAmount <= 0
-      || Number(checkout.amount) !== expectedAmount
-      || typeof orderId !== 'string'
-      || typeof metadata.userEmail !== 'string'
-      || !metadataMatchesOrder) {
-      console.error('Rejected inconsistent signed Chargily paid event:', event.id);
-      return res.status(400).json({ error: 'Paid checkout data does not match the expected order.' });
-    }
-
-    const cleanEmail = metadata.userEmail.trim().toLowerCase();
-    const userName = typeof metadata.userName === 'string' ? metadata.userName : '';
-    const paidOrder: ChargilyOrder = order || {
-      orderId,
-      checkoutId: checkout.id,
-      planId,
-      userEmail: cleanEmail,
-      userName,
-      amount: Number(checkout.amount),
-      status: 'paid',
-      fulfillmentStatus: 'pending',
-      createdAt: new Date().toISOString()
-    };
-    paidOrder.status = 'paid';
-    chargilyOrders.set(paidOrder.orderId, paidOrder);
-    chargilyOrderByCheckoutId.set(checkout.id, paidOrder.orderId);
-
-    try {
-      if (!paidOrder.licenseKey) {
-        const createdLicense = await createLicenseSeatLicense(paidOrder, checkout.id);
-        paidOrder.licenseKey = createdLicense.key;
-        paidOrder.licenseSeatLicenseId = createdLicense.id;
-        paidOrder.fulfillmentStatus = 'license_created';
-        chargilyOrders.set(paidOrder.orderId, paidOrder);
-
-        dbLicenses.set(createdLicense.key, {
-          id: createdLicense.id || `lic-${paidOrder.orderId}`,
-          key: createdLicense.key,
-          plan: planId,
-          userEmail: cleanEmail,
-          userName,
-          status: 'active',
-          issuedAt: new Date().toISOString().split('T')[0],
-          expiresAt: createdLicense.expiresAt || '2027-09-01',
-          paidVia: 'Chargily Pay V2 / LicenseSeat',
-          amountDZD: Number(checkout.amount),
-          maxDevices: createdLicense.seatLimit || (planId === 'school' ? 10 : planId === 'pro' ? 3 : 1)
-        });
-
-        const user = dbUsers.get(cleanEmail);
-        if (user) {
-          user.licenseKey = createdLicense.key;
-          user.licenseStatus = 'active';
-          user.licensePlan = planId;
-        }
-      }
-
-      if (paidOrder.fulfillmentStatus !== 'email_sent') {
-        paidOrder.resendEmailId = await sendLicenseEmail(paidOrder, paidOrder.licenseKey!);
-        paidOrder.fulfillmentStatus = 'email_sent';
-        chargilyOrders.set(paidOrder.orderId, paidOrder);
-      }
-    } catch (fulfillmentError: any) {
-      console.error('Paid checkout fulfillment is incomplete:', fulfillmentError?.message || fulfillmentError);
-      return res.status(500).json({ error: 'Payment received; license delivery will be retried.' });
-    }
-  } else if (event.type === 'checkout.failed' || event.type === 'checkout.canceled') {
-    const checkout = event.data || {};
-    const relatedOrderId = typeof checkout.id === 'string' ? chargilyOrderByCheckoutId.get(checkout.id) : undefined;
-    const order = relatedOrderId ? chargilyOrders.get(relatedOrderId) : undefined;
-    if (order && order.status === 'pending') {
-      order.status = 'failed';
-      chargilyOrders.set(order.orderId, order);
-    }
+  let eventClaim: 'acquired' | 'completed' | 'busy';
+  try {
+    eventClaim = await paymentStore.claimEvent(event.id, event.type, PAYMENT_LEASE_MS);
+  } catch {
+    return res.status(503).json({ error: 'Payment storage is temporarily unavailable.' });
   }
+  if (eventClaim === 'completed') return res.status(200).json({ received: true, duplicate: true });
+  if (eventClaim === 'busy') return res.status(503).json({ error: 'This event is currently being processed; retry shortly.' });
 
-  processedChargilyEvents.add(event.id);
-  return res.status(200).json({ received: true });
+  let claimedOrderId: string | undefined;
+  try {
+    if (event.type === 'checkout.paid') {
+      const checkout = event.data || {};
+      const metadata = checkout.metadata || {};
+      const orderId = metadata.orderId;
+      const planId = metadata.planId;
+      const plan = dbPricingSettings.plans[planId as keyof typeof dbPricingSettings.plans];
+      if (typeof orderId !== 'string' || !/^[0-9a-f-]{36}$/i.test(orderId)) {
+        return res.status(400).json({ error: 'Paid checkout does not include a valid order reference.' });
+      }
+      let order = await paymentStore.getOrder(orderId);
+      if (!order) return res.status(400).json({ error: 'Paid checkout does not match a stored order.' });
+      if (typeof checkout.id !== 'string' || !plan || checkout.status !== 'paid' || checkout.currency !== 'dzd'
+        || Number(checkout.amount) !== order.amount || typeof metadata.userEmail !== 'string'
+        || !metadataMatches(order, checkout, metadata)) {
+        return res.status(400).json({ error: 'Paid checkout data does not match the expected order.' });
+      }
+
+      const claim = await paymentStore.claimOrder(orderId, PAYMENT_LEASE_MS);
+      if (claim === 'busy') return res.status(503).json({ error: 'This order is being processed; retry shortly.' });
+      claimedOrderId = orderId;
+      order = {
+        ...order,
+        checkoutId: String(checkout.id),
+        status: 'paid',
+        checkoutStatus: 'active'
+      };
+      await paymentStore.updateOrder(orderId, { checkoutId: String(checkout.id), status: 'paid', checkoutStatus: 'active' });
+
+      if (order.fulfillmentStatus === 'license_creation_started' && isStaleAttempt(order.licenseCreateStartedAt)) {
+        await paymentStore.updateOrder(orderId, { fulfillmentStatus: 'license_creation_unknown' });
+        await paymentStore.completeEvent(event.id);
+        return res.status(200).json({ received: true, needsReconciliation: true });
+      }
+      if (order.fulfillmentStatus === 'license_creation_started') {
+        await paymentStore.releaseEvent(event.id);
+        return res.status(503).json({ error: 'License creation is still being reconciled; retry shortly.' });
+      }
+      if (needsManualReconciliation(order)) {
+        await paymentStore.completeEvent(event.id);
+        return res.status(200).json({ received: true, needsReconciliation: true });
+      }
+
+      try {
+        if (order.fulfillmentStatus === 'pending') {
+          await paymentStore.updateOrder(orderId, { fulfillmentStatus: 'license_creation_started', licenseCreateStartedAt: new Date().toISOString() });
+          try {
+            const created = await createLicenseSeatLicense(order, String(checkout.id));
+            await paymentStore.updateOrder(orderId, {
+              licenseKey: created.key,
+              licenseSeatLicenseId: created.id,
+              fulfillmentStatus: 'license_created'
+            });
+            order = { ...order, licenseKey: created.key, licenseSeatLicenseId: created.id, fulfillmentStatus: 'license_created' };
+          } catch (error) {
+            const status = providerStatus(error);
+            if (status !== undefined && definitiveLicenseFailure(status)) {
+              await paymentStore.updateOrder(orderId, { fulfillmentStatus: 'pending' });
+              await paymentStore.releaseEvent(event.id);
+              return res.status(503).json({ error: 'LicenseSeat rejected fulfillment; provider delivery may be retried after configuration is corrected.' });
+            }
+            await paymentStore.updateOrder(orderId, { fulfillmentStatus: 'license_creation_unknown' });
+            await paymentStore.completeEvent(event.id);
+            return res.status(200).json({ received: true, needsReconciliation: true });
+          }
+        }
+
+        order = await paymentStore.getOrder(orderId) || order;
+        if (order.fulfillmentStatus === 'email_sending' && !resendRetryIsSafe(order.emailSendStartedAt)) {
+          await paymentStore.updateOrder(orderId, { fulfillmentStatus: 'email_delivery_unknown' });
+          await paymentStore.completeEvent(event.id);
+          return res.status(200).json({ received: true, needsReconciliation: true });
+        }
+        if (order.fulfillmentStatus === 'license_created' || order.fulfillmentStatus === 'email_sending') {
+          if (!order.licenseKey) throw new Error('Stored LicenseSeat key is missing.');
+          if (order.fulfillmentStatus === 'license_created') {
+            await paymentStore.updateOrder(orderId, { fulfillmentStatus: 'email_sending', emailSendStartedAt: new Date().toISOString() });
+          }
+          try {
+            const emailId = await sendLicenseEmail(order, order.licenseKey);
+            await paymentStore.updateOrder(orderId, { resendEmailId: emailId, fulfillmentStatus: 'email_sent' });
+          } catch (error) {
+            const status = providerStatus(error);
+            if (status !== undefined && status >= 400 && status < 500) {
+              await paymentStore.updateOrder(orderId, { fulfillmentStatus: 'license_created' });
+            } else if (!resendRetryIsSafe(order.emailSendStartedAt || new Date().toISOString())) {
+              await paymentStore.updateOrder(orderId, { fulfillmentStatus: 'email_delivery_unknown' });
+              await paymentStore.completeEvent(event.id);
+              return res.status(200).json({ received: true, needsReconciliation: true });
+            }
+            await paymentStore.releaseEvent(event.id);
+            return res.status(503).json({ error: 'Payment is recorded; email delivery will be retried safely.' });
+          }
+        }
+      } catch (error) {
+        console.error('Paid order fulfillment persistence failed:', orderId.slice(0, 8), safeError(error));
+        await paymentStore.releaseEvent(event.id).catch(() => undefined);
+        return res.status(503).json({ error: 'Payment is recorded; fulfillment will resume when storage is available.' });
+      }
+    } else if (event.type === 'checkout.failed' || event.type === 'checkout.canceled') {
+      const checkout = event.data || {};
+      const metadataOrderId = checkout.metadata?.orderId;
+      const order = (typeof metadataOrderId === 'string' ? await paymentStore.getOrder(metadataOrderId) : undefined)
+        || (typeof checkout.id === 'string' ? await paymentStore.getOrderByCheckoutId(checkout.id) : undefined);
+      if (order && order.status !== 'paid') {
+        await paymentStore.updateOrder(order.orderId, { status: 'failed', checkoutStatus: 'failed' });
+      }
+    }
+    await paymentStore.completeEvent(event.id);
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    if (claimedOrderId) await paymentStore.releaseOrder(claimedOrderId).catch(() => undefined);
+    await paymentStore.releaseEvent(event.id).catch(() => undefined);
+    console.error('Chargily webhook processing failed:', safeError(error));
+    return res.status(503).json({ error: 'Webhook processing is temporarily unavailable; retry shortly.' });
+  } finally {
+    if (claimedOrderId) await paymentStore.releaseOrder(claimedOrderId).catch(() => undefined);
+  }
 });
 
 // Verify License Key endpoint
@@ -1542,6 +1607,7 @@ app.post("/api/license/verify", async (req, res) => {
 
 // Vite & Static file serving setup
 async function startServer() {
+  await paymentStore.ping();
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1561,4 +1627,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch(error => {
+  console.error('Server startup failed; Firestore is required for payment safety:', safeError(error));
+  process.exitCode = 1;
+});
