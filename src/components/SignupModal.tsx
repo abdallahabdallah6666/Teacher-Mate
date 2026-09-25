@@ -37,12 +37,14 @@ export const SignupModal: React.FC<SignupModalProps> = ({
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [processingPayment, setProcessingPayment] = useState<boolean>(false);
+  const [checkoutOrderId, setCheckoutOrderId] = useState<string>(() => crypto.randomUUID());
 
   useEffect(() => {
     if (isOpen) {
       setStep('form');
       setError(null);
       setPaymentError(null);
+      setCheckoutOrderId(crypto.randomUUID());
     }
   }, [isOpen]);
 
@@ -115,6 +117,7 @@ export const SignupModal: React.FC<SignupModalProps> = ({
   const handleCreateCheckout = async () => {
     setProcessingPayment(true);
     setPaymentError(null);
+    let checkoutAttempted = false;
 
     try {
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
@@ -147,6 +150,7 @@ export const SignupModal: React.FC<SignupModalProps> = ({
       }
 
       const registeredUser: UserProfile = regJson.user;
+      checkoutAttempted = true;
       const checkoutRes = await fetch('/api/checkout/chargily', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -154,12 +158,17 @@ export const SignupModal: React.FC<SignupModalProps> = ({
           planId: selectedPlanForCheckout?.id || 'pro',
           userEmail: registeredUser.email,
           userName: registeredUser.fullName,
-          wilaya: registeredUser.wilaya
+          wilaya: registeredUser.wilaya,
+          orderId: checkoutOrderId
         })
       });
 
       const checkoutJson = await checkoutRes.json();
       if (!checkoutRes.ok || !checkoutJson.checkoutUrl) {
+        if (checkoutJson.needsSupport && checkoutJson.orderId) {
+          window.location.assign(`/?chargily_order=${encodeURIComponent(checkoutJson.orderId)}`);
+          return;
+        }
         setPaymentError(checkoutJson.error || (
           lang === 'ar'
             ? 'تعذر بدء الدفع. يرجى المحاولة لاحقاً.'
@@ -175,6 +184,10 @@ export const SignupModal: React.FC<SignupModalProps> = ({
 
     } catch (err) {
       console.error(err);
+      if (checkoutAttempted) {
+        window.location.assign(`/?chargily_order=${encodeURIComponent(checkoutOrderId)}`);
+        return;
+      }
       setProcessingPayment(false);
       setStep('form');
       setPaymentError(

@@ -22,6 +22,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [purchasedKey, setPurchasedKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<boolean>(false);
+  const [checkoutOrderId] = useState<string>(() => crypto.randomUUID());
 
   if (!isOpen) return null;
 
@@ -75,11 +76,16 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           planId: selectedPlanForCheckout?.id || 'pro',
-          userEmail: 'teacher.dz@education.dz'
+          userEmail: 'teacher.dz@education.dz',
+          orderId: checkoutOrderId
         })
       });
 
       const json = await res.json();
+      if (json.needsSupport && json.orderId) {
+        window.location.assign(`/?chargily_order=${encodeURIComponent(json.orderId)}`);
+        return;
+      }
       if (res.ok && json.success && json.checkoutUrl) {
         window.location.assign(json.checkoutUrl);
       } else {
