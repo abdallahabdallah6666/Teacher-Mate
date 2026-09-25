@@ -67,7 +67,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
     }
   };
 
-  const handleSimulateChargilyCheckout = async () => {
+  const handleChargilyCheckout = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/checkout/chargily', {
@@ -80,14 +80,13 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
       });
 
       const json = await res.json();
-      if (json.success && json.licenseKey) {
-        setPurchasedKey(json.licenseKey);
-        onLicenseActivated(json.licenseKey);
+      if (res.ok && json.success && json.checkoutUrl) {
+        window.location.assign(json.checkoutUrl);
       } else {
         alert(
-          lang === 'ar' ? 'تعذر إنشاء طلب الدفع' :
+          json.error || (lang === 'ar' ? 'تعذر إنشاء طلب الدفع' :
           lang === 'fr' ? 'Impossible d\'initier le paiement' :
-          'Failed to initialize checkout'
+          'Failed to initialize checkout')
         );
       }
     } catch (err) {
@@ -171,7 +170,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
             </div>
 
             <button
-              onClick={handleSimulateChargilyCheckout}
+              onClick={handleChargilyCheckout}
               disabled={loading}
               className="w-full py-3 rounded-md bg-[#0D9488] hover:bg-teal-700 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition-colors"
             >

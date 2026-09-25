@@ -3,13 +3,18 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buffer) => {
+    (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+  }
+}));
 
 // Initialize Gemini SDK lazily / safely
 function getGeminiClient() {
@@ -31,6 +36,20 @@ function getGeminiClient() {
 const dbUsers = new Map<string, any>();
 const dbLicenses = new Map<string, any>();
 const dbInquiries = new Map<string, any>();
+type ChargilyOrder = {
+  orderId: string;
+  checkoutId: string;
+  planId: string;
+  userEmail: string;
+  userName: string;
+  amount: number;
+  licenseKey: string;
+  status: 'pending' | 'paid' | 'failed';
+  createdAt: string;
+};
+const chargilyOrders = new Map<string, ChargilyOrder>();
+const chargilyOrderByCheckoutId = new Map<string, string>();
+const processedChargilyEvents = new Set<string>();
 
 // Seed clean database with only master admin account
 const initialUser = {
@@ -268,7 +287,8 @@ seedTutorials.forEach(t => dbTutorials.set(t.id, t));
 
 // Helper to generate license keys
 function generateLicenseKey(plan: string = 'PRO'): string {
-  const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+  const hex = randomBytes(4).toString('hex').toUpperCase();
+  const randomPart = `${hex.slice(0, 4)}-${hex.slice(4)}`;
   return `TC-ALG-${plan}-${randomPart}`;
 }
 
@@ -307,7 +327,6 @@ app.post("/api/auth/register", (req, res) => {
   const calculatedFullName = (fullName && fullName.trim()) ? fullName : `${firstName} ${lastName}`;
 
   const userRole = (cleanEmail.includes('admin') || role === 'admin') ? 'admin' : 'user';
-  const newKey = generateLicenseKey('PRO');
 
   const newUser = {
     id: `user-${Date.now()}`,
@@ -322,30 +341,14 @@ app.post("/api/auth/register", (req, res) => {
     schoolName: schoolName || '',
     referralSource: referralSource || 'فيسبوك / مواقع التواصل',
     primaryGrade: primaryGrade || '4AP',
-    licenseStatus: 'active',
+    licenseStatus: 'trial',
     licensePlan: 'pro',
-    licenseKey: newKey,
     createdAt: new Date().toISOString()
   };
 
   dbUsers.set(cleanEmail, newUser);
 
-  // Create license record
-  dbLicenses.set(newKey, {
-    id: `lic-${Date.now()}`,
-    key: newKey,
-    userEmail: cleanEmail,
-    userName: calculatedFullName,
-    plan: 'pro',
-    status: 'active',
-    issuedAt: new Date().toISOString().split('T')[0],
-    expiresAt: '2027-09-01',
-    paidVia: 'Chargily Pay v2 (Edahabia/CIB)',
-    amountDZD: 2900,
-    maxDevices: 3
-  });
-
-  console.log("User registered in database:", newUser);
+  console.log("User registered:", cleanEmail);
   res.json({ success: true, user: newUser, token: "demo-jwt-token" });
 });
 
@@ -1178,118 +1181,201 @@ app.post("/api/gemini/worksheet", async (req, res) => {
   }
 });
 
-// Chargily Pay Integration Endpoints
+// Chargily Pay V2: create a checkout, then fulfill only from a signed paid webhook.
 app.post("/api/checkout/chargily", async (req, res) => {
   try {
-    const { planId, userEmail, userName, wilaya, paymentStatus } = req.body;
-    
-    if (paymentStatus === 'failed') {
-      return res.status(400).json({ error: "فشل الدفع! تم إلغاء العملية أو رفض البطاقة الذهبية / CIB. يرجى المحاولة مرة أخرى." });
+    const chargilyKey = process.env.CHARGILY_SECRET_KEY?.trim();
+    if (!chargilyKey || !/^(test|live)_sk_/.test(chargilyKey)) {
+      return res.status(503).json({ error: "Chargily Pay is not configured with a valid V2 API secret key." });
     }
 
-    const planName = planId === 'pro' ? 'PRO' : planId === 'school' ? 'SCHOOL' : 'SINGLE';
-    const amount = planId === 'pro' ? 2900 : planId === 'school' ? 8500 : 1900;
-    const newLicenseKey = generateLicenseKey(planName);
+    const { planId, userEmail, userName } = req.body || {};
+    const plan = dbPricingSettings.plans[planId as keyof typeof dbPricingSettings.plans];
+    const cleanEmail = typeof userEmail === 'string' ? userEmail.trim().toLowerCase() : '';
+    if (!plan || !cleanEmail || !/^\S+@\S+\.\S+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: "A valid plan and customer email are required." });
+    }
 
-    // If CHARGILY_SECRET_KEY is set, we can also call Chargily Pay v2 API for live/test checkouts
-    const chargilyKey = process.env.CHARGILY_SECRET_KEY;
-    let chargilyCheckoutUrl = `/active-license?key=${newLicenseKey}&plan=${planId}&status=success`;
+    const appUrl = process.env.APP_URL?.trim() || `${req.protocol}://${req.get('host')}`;
+    const orderId = randomUUID();
+    const licenseKey = generateLicenseKey(planId.toUpperCase());
+    const baseUrl = chargilyKey.startsWith('test_sk_')
+      ? 'https://pay.chargily.net/test/api/v2'
+      : 'https://pay.chargily.net/api/v2';
+    const returnUrl = new URL('/', appUrl);
+    returnUrl.searchParams.set('chargily_order', orderId);
+    const failureUrl = new URL('/', appUrl);
+    failureUrl.searchParams.set('chargily_order', orderId);
+    failureUrl.searchParams.set('payment_failed', '1');
 
-    if (chargilyKey && chargilyKey.trim() !== '') {
-      try {
-        const chargilyRes = await fetch('https://pay.chargily.com/api/v2/checkouts', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${chargilyKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            amount: amount,
-            currency: 'dzd',
-            success_url: `${req.protocol}://${req.get('host')}/active-license?status=success&key=${newLicenseKey}`,
-            failure_url: `${req.protocol}://${req.get('host')}/signup?status=failed`,
-            metadata: {
-              userEmail,
-              userName,
-              planId,
-              licenseKey: newLicenseKey
-            }
-          })
-        });
-        if (chargilyRes.ok) {
-          const chargilyData = await chargilyRes.json();
-          if (chargilyData.checkout_url) {
-            chargilyCheckoutUrl = chargilyData.checkout_url;
-          }
+    const chargilyRes = await fetch(`${baseUrl}/checkouts`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${chargilyKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        amount: plan.priceDZD,
+        currency: 'dzd',
+        success_url: returnUrl.toString(),
+        failure_url: failureUrl.toString(),
+        webhook_endpoint: new URL('/api/webhooks/chargily', appUrl).toString(),
+        locale: 'ar',
+        description: `Teacher Mate ${planId} subscription`,
+        metadata: {
+          orderId,
+          userEmail: cleanEmail,
+          userName: typeof userName === 'string' ? userName.trim() : '',
+          planId,
+          amountDZD: plan.priceDZD,
+          licenseKey
         }
-      } catch (apiErr) {
-        console.warn("Chargily API v2 external call warning (falling back to secure built-in gateway):", apiErr);
-      }
-    }
-
-    // Save license status in internal DB
-    dbLicenses.set(newLicenseKey, {
-      id: `lic-${Date.now()}`,
-      key: newLicenseKey,
-      plan: planId,
-      userEmail,
-      userName,
-      status: 'active',
-      issuedAt: new Date().toISOString().split('T')[0],
-      expiresAt: '2027-09-01',
-      paidVia: 'Chargily Pay (Edahabia / CIB)',
-      amountDZD: amount,
-      maxDevices: planId === 'school' ? 10 : planId === 'pro' ? 3 : 1
+      })
     });
 
-    // Update user if registered
-    if (userEmail && dbUsers.has(userEmail)) {
-      const u = dbUsers.get(userEmail);
-      u.licenseKey = newLicenseKey;
-      u.licenseStatus = 'active';
-      u.licensePlan = planId;
-      dbUsers.set(userEmail, u);
+    const chargilyData = await chargilyRes.json().catch(() => ({}));
+    if (!chargilyRes.ok || !chargilyData.id || !chargilyData.checkout_url) {
+      console.error('Chargily checkout creation failed:', chargilyData);
+      return res.status(502).json({ error: "Chargily could not create the checkout. Please try again." });
     }
 
-    res.json({
-      success: true,
-      checkoutUrl: chargilyCheckoutUrl,
-      licenseKey: newLicenseKey,
-      orderId: `CHARGILY-${Date.now()}`,
-      status: 'paid',
-      message: 'تم إتمام الدفع بنجاح عبر بوابة Chargily Pay (البطاقة الذهبية / CIB)'
-    });
+    const order: ChargilyOrder = {
+      orderId,
+      checkoutId: chargilyData.id,
+      planId,
+      userEmail: cleanEmail,
+      userName: typeof userName === 'string' ? userName.trim() : '',
+      amount: plan.priceDZD,
+      licenseKey,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    chargilyOrders.set(orderId, order);
+    chargilyOrderByCheckoutId.set(chargilyData.id, orderId);
+
+    return res.json({ success: true, checkoutUrl: chargilyData.checkout_url, orderId });
   } catch (err: any) {
-    res.status(500).json({ error: "تعذر إكمال عملية الدفع عبر بوابة Chargily", details: err.message });
+    console.error('Chargily checkout initialization error:', err?.message || err);
+    return res.status(502).json({ error: "Unable to start the Chargily checkout right now." });
   }
 });
 
-// Chargily Webhook route for checkout.paid event
+app.get("/api/checkout/chargily/status/:orderId", (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const order = chargilyOrders.get(req.params.orderId);
+  if (!order) return res.status(404).json({ status: 'unknown' });
+  if (order.status !== 'paid') return res.json({ status: order.status });
+  return res.json({ status: 'paid', licenseKey: order.licenseKey });
+});
+
 app.post("/api/webhooks/chargily", (req, res) => {
+  const secret = process.env.CHARGILY_SECRET_KEY?.trim();
+  const signature = req.get('signature');
+  const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
+  if (!secret || !signature || !rawBody) {
+    return res.status(400).json({ error: 'Missing Chargily webhook signature or server configuration.' });
+  }
+
+  const expected = createHmac('sha256', secret).update(rawBody).digest();
+  let received: Buffer;
+  try {
+    received = Buffer.from(signature, 'hex');
+  } catch {
+    return res.status(403).json({ error: 'Invalid webhook signature.' });
+  }
+  if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
+    return res.status(403).json({ error: 'Invalid webhook signature.' });
+  }
+
   const event = req.body;
-  console.log("Chargily Webhook received:", event);
+  if (!event || typeof event.id !== 'string' || typeof event.type !== 'string') {
+    return res.status(400).json({ error: 'Invalid webhook event.' });
+  }
+  if (processedChargilyEvents.has(event.id)) return res.status(200).json({ received: true, duplicate: true });
 
-  if (event && event.type === 'checkout.paid') {
-    const checkoutData = event.data;
-    const metadata = checkoutData.metadata || {};
-    const userEmail = metadata.userEmail;
-    
-    const generatedKey = generateLicenseKey('CHARGILY');
-    dbLicenses.set(generatedKey, {
-      key: generatedKey,
-      userEmail,
-      status: 'active',
-      paidVia: 'Chargily Pay v2'
-    });
+  if (event.type === 'checkout.paid') {
+    const checkout = event.data || {};
+    const metadata = checkout.metadata || {};
+    const orderId = metadata.orderId;
+    const planId = metadata.planId;
+    const plan = dbPricingSettings.plans[planId as keyof typeof dbPricingSettings.plans];
+    const existingOrderId = typeof checkout.id === 'string' ? chargilyOrderByCheckoutId.get(checkout.id) : undefined;
+    const order = (typeof orderId === 'string' ? chargilyOrders.get(orderId) : undefined)
+      || (existingOrderId ? chargilyOrders.get(existingOrderId) : undefined);
+    const expectedAmount = Number(order?.amount ?? metadata.amountDZD);
+    const metadataMatchesOrder = !order || (
+      order.checkoutId === checkout.id
+      && order.orderId === orderId
+      && order.planId === planId
+      && order.userEmail === String(metadata.userEmail || '').trim().toLowerCase()
+      && order.licenseKey === metadata.licenseKey
+    );
 
-    if (userEmail && dbUsers.has(userEmail)) {
-      const u = dbUsers.get(userEmail);
-      u.licenseKey = generatedKey;
-      u.licenseStatus = 'active';
+    if (!plan || checkout.status !== 'paid' || checkout.currency !== 'dzd'
+      || !Number.isInteger(expectedAmount) || expectedAmount <= 0
+      || Number(checkout.amount) !== expectedAmount
+      || typeof orderId !== 'string'
+      || typeof metadata.licenseKey !== 'string'
+      || typeof metadata.userEmail !== 'string'
+      || !metadataMatchesOrder) {
+      console.error('Rejected inconsistent signed Chargily paid event:', event.id);
+      return res.status(400).json({ error: 'Paid checkout data does not match the expected order.' });
+    }
+
+    {
+      const cleanEmail = metadata.userEmail.trim().toLowerCase();
+      const licenseKey = metadata.licenseKey;
+      const userName = typeof metadata.userName === 'string' ? metadata.userName : '';
+      const amount = Number(checkout.amount);
+      const paidOrder: ChargilyOrder = {
+        orderId: typeof orderId === 'string' ? orderId : (order?.orderId || checkout.id),
+        checkoutId: checkout.id,
+        planId,
+        userEmail: cleanEmail,
+        userName,
+        amount,
+        licenseKey,
+        status: 'paid',
+        createdAt: order?.createdAt || new Date().toISOString()
+      };
+      chargilyOrders.set(paidOrder.orderId, paidOrder);
+      chargilyOrderByCheckoutId.set(checkout.id, paidOrder.orderId);
+
+      if (!dbLicenses.has(licenseKey)) {
+        dbLicenses.set(licenseKey, {
+          id: `lic-${paidOrder.orderId}`,
+          key: licenseKey,
+          plan: planId,
+          userEmail: cleanEmail,
+          userName,
+          status: 'active',
+          issuedAt: new Date().toISOString().split('T')[0],
+          expiresAt: '2027-09-01',
+          paidVia: 'Chargily Pay v2 (Edahabia/CIB)',
+          amountDZD: amount,
+          maxDevices: planId === 'school' ? 10 : planId === 'pro' ? 3 : 1
+        });
+      }
+
+      const user = dbUsers.get(cleanEmail);
+      if (user) {
+        user.licenseKey = licenseKey;
+        user.licenseStatus = 'active';
+        user.licensePlan = planId;
+      }
+    }
+  } else if (event.type === 'checkout.failed' || event.type === 'checkout.canceled') {
+    const checkout = event.data || {};
+    const relatedOrderId = typeof checkout.id === 'string' ? chargilyOrderByCheckoutId.get(checkout.id) : undefined;
+    const order = relatedOrderId ? chargilyOrders.get(relatedOrderId) : undefined;
+    if (order && order.status === 'pending') {
+      order.status = 'failed';
+      chargilyOrders.set(order.orderId, order);
     }
   }
 
-  res.json({ received: true });
+  processedChargilyEvents.add(event.id);
+  return res.status(200).json({ received: true });
 });
 
 // Verify License Key endpoint
@@ -1300,21 +1386,23 @@ app.post("/api/license/verify", (req, res) => {
   }
 
   const cleanKey = licenseKey.trim().toUpperCase();
-
-  if (cleanKey.startsWith("TC-ALG-") || cleanKey === "DEMO-TEACHER-2026") {
+  const license = dbLicenses.get(cleanKey);
+  if (license && license.status === 'active') {
     // Save to user profile if provided
-    if (userEmail && dbUsers.has(userEmail)) {
-      const u = dbUsers.get(userEmail);
+    const cleanEmail = typeof userEmail === 'string' ? userEmail.trim().toLowerCase() : '';
+    if (cleanEmail && dbUsers.has(cleanEmail)) {
+      const u = dbUsers.get(cleanEmail);
       u.licenseKey = cleanKey;
       u.licenseStatus = 'active';
-      dbUsers.set(userEmail, u);
+      u.licensePlan = license.plan;
+      dbUsers.set(cleanEmail, u);
     }
     return res.json({
       valid: true,
       licenseKey: cleanKey,
       status: 'active',
-      planName: cleanKey.includes('SCHOOL') ? 'المؤسسات التعليمية' : 'جميع السنوات (شامل)',
-      expiryDate: '2027-09-01'
+      planName: license.plan === 'school' ? 'المؤسسات التعليمية' : 'جميع السنوات (شامل)',
+      expiryDate: license.expiresAt
     });
   }
 

@@ -12,7 +12,7 @@ interface SignupModalProps {
   onSignupSuccess: (user: UserProfile) => void;
 }
 
-type SignupStep = 'form' | 'payment' | 'success';
+type SignupStep = 'form' | 'payment';
 
 export const SignupModal: React.FC<SignupModalProps> = ({
   lang,
@@ -37,7 +37,6 @@ export const SignupModal: React.FC<SignupModalProps> = ({
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [processingPayment, setProcessingPayment] = useState<boolean>(false);
-  const [createdUser, setCreatedUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -113,14 +112,15 @@ export const SignupModal: React.FC<SignupModalProps> = ({
     setStep('payment');
   };
 
-  const handleCompletePayment = async (success: boolean) => {
+  const handleCreateCheckout = async () => {
     setProcessingPayment(true);
     setPaymentError(null);
 
     try {
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
-      
-      // 1. Register User in backend
+
+      // Create a pending account before checkout; activation happens only after
+      // Chargily's signed checkout.paid webhook is verified by the server.
       const regRes = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,9 +147,6 @@ export const SignupModal: React.FC<SignupModalProps> = ({
       }
 
       const registeredUser: UserProfile = regJson.user;
-      setCreatedUser(registeredUser);
-
-      // 2. Call Chargily Checkout with success or failure status
       const checkoutRes = await fetch('/api/checkout/chargily', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,32 +154,24 @@ export const SignupModal: React.FC<SignupModalProps> = ({
           planId: selectedPlanForCheckout?.id || 'pro',
           userEmail: registeredUser.email,
           userName: registeredUser.fullName,
-          wilaya: registeredUser.wilaya,
-          paymentStatus: success ? 'paid' : 'failed'
+          wilaya: registeredUser.wilaya
         })
       });
 
       const checkoutJson = await checkoutRes.json();
-
-      if (!success || !checkoutRes.ok) {
-        // Payment failed: Go back to form with data prefilled and payment failed message
-        setProcessingPayment(false);
-        setStep('form');
-        setPaymentError(
+      if (!checkoutRes.ok || !checkoutJson.checkoutUrl) {
+        setPaymentError(checkoutJson.error || (
           lang === 'ar'
-            ? 'فشل الدفع! تم رفض معاملة البطاقة الذهبية / CIB أو إلغاؤها. يرجى المحاولة مرة أخرى.'
+            ? 'تعذر بدء الدفع. يرجى المحاولة لاحقاً.'
             : lang === 'fr'
-            ? 'Échec du paiement ! Transaction refusée ou annulée. Veuillez réessayer.'
-            : 'Payment failed! Transaction declined or cancelled. Please try again.'
-        );
+            ? 'Impossible de démarrer le paiement. Veuillez réessayer plus tard.'
+            : 'Could not start payment. Please try again later.'
+        ));
+        setProcessingPayment(false);
         return;
       }
 
-      // Payment successful: Show success step then enter User Hub
-      setStep('success');
-      setTimeout(() => {
-        onSignupSuccess(registeredUser);
-      }, 1500);
+      window.location.assign(checkoutJson.checkoutUrl);
 
     } catch (err) {
       console.error(err);
@@ -463,7 +452,7 @@ export const SignupModal: React.FC<SignupModalProps> = ({
           </form>
         )}
 
-        {/* STEP 2: PAYMENT GATEWAY (CHARGILY PAY) */}
+        {/* STEP 2: CHARGILY PAY CHECKOUT */}
         {step === 'payment' && (
           <div className="space-y-6 text-center py-2 animate-fadeIn">
             
@@ -477,9 +466,9 @@ export const SignupModal: React.FC<SignupModalProps> = ({
                 {lang === 'en' && 'Secure Payment Gateway'}
               </h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                {lang === 'ar' && 'اختر طريقة المحاكاة لإتمام عملية الدفع بالبطاقة الذهبية أو CIB وتفعيل حسابك الفوري.'}
-                {lang === 'fr' && 'Simulez le paiement Edahabia / CIB pour activer votre compte.'}
-                {lang === 'en' && 'Simulate Edahabia / CIB payment to activate your account.'}
+                  {lang === 'ar' && 'سيتم تحويلك إلى صفحة Chargily الآمنة للدفع بالبطاقة الذهبية أو CIB. لن يتم تفعيل الرخصة إلا بعد تأكيد الدفع.'}
+                  {lang === 'fr' && 'Vous serez redirigé vers la page sécurisée de Chargily. La licence sera activée après confirmation du paiement.'}
+                  {lang === 'en' && 'You will be redirected to Chargily’s secure payment page. Your license activates only after payment is confirmed.'}
               </p>
             </div>
 
@@ -507,12 +496,12 @@ export const SignupModal: React.FC<SignupModalProps> = ({
               </div>
             </div>
 
-            {/* Payment simulation action buttons */}
+            {/* Start the real hosted checkout */}
             <div className="space-y-3 pt-2">
               <button
                 type="button"
                 disabled={processingPayment}
-                onClick={() => handleCompletePayment(true)}
+                onClick={handleCreateCheckout}
                 className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
               >
                 {processingPayment ? (
@@ -521,22 +510,9 @@ export const SignupModal: React.FC<SignupModalProps> = ({
                   <CheckCircle className="w-4 h-4" />
                 )}
                 <span>
-                  {lang === 'ar' && 'إتمام الدفع بنجاح (بطاقة الذهبية / CIB - تفعيل فوري)'}
-                  {lang === 'fr' && 'Payer avec succès (Edahabia / CIB)'}
-                  {lang === 'en' && 'Complete Successful Payment'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                disabled={processingPayment}
-                onClick={() => handleCompletePayment(false)}
-                className="w-full py-3.5 bg-red-600/10 hover:bg-red-600/20 text-red-700 border border-red-300 font-extrabold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
-              >
-                <span>
-                  {lang === 'ar' && 'محاكاة فشل أو إلغاء الدفع (اختبار الخطأ)'}
-                  {lang === 'fr' && 'Simuler un échec de paiement'}
-                  {lang === 'en' && 'Simulate Payment Failure'}
+                  {lang === 'ar' && 'المتابعة إلى الدفع الآمن'}
+                  {lang === 'fr' && 'Continuer vers le paiement sécurisé'}
+                  {lang === 'en' && 'Continue to secure payment'}
                 </span>
               </button>
 
@@ -555,27 +531,7 @@ export const SignupModal: React.FC<SignupModalProps> = ({
           </div>
         )}
 
-        {/* STEP 3: SUCCESS */}
-        {step === 'success' && (
-          <div className="py-10 text-center space-y-4 animate-fadeIn">
-            <div className="w-16 h-16 rounded-full bg-emerald-50 border-2 border-emerald-500 text-emerald-600 flex items-center justify-center mx-auto animate-bounce">
-              <ShieldCheck className="w-8 h-8" />
-            </div>
-            <h3 className="text-xl font-bold text-[#1E3A8A]">
-              {lang === 'ar' && 'تم الدفع بنجاح وتفعيل الرخصة!'}
-              {lang === 'fr' && 'Paiement réussi et licence activée!'}
-              {lang === 'en' && 'Payment Successful & License Activated!'}
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed max-w-sm mx-auto">
-              {lang === 'ar' && 'جاري توجيهك إلى Hub الأساتذة وعرض مفتاح التفعيل الخاص بك...'}
-              {lang === 'fr' && 'Redirection vers le Hub Enseignant...'}
-              {lang === 'en' && 'Redirecting you to Teacher Hub...'}
-            </p>
-          </div>
-        )}
-
       </div>
     </div>
   );
 };
-
