@@ -1,5 +1,6 @@
-import { Firestore } from '@google-cloud/firestore';
-import type { CollectionReference } from '@google-cloud/firestore';
+import { Pool } from 'pg';
+import type { PoolClient } from 'pg';
+import { Connector, IpAddressTypes } from '@google-cloud/cloud-sql-connector';
 
 export type PaymentOrder = {
   orderId: string;
@@ -43,85 +44,148 @@ export interface PaymentStore {
   claimOrder(orderId: string, leaseMs: number): Promise<'acquired' | 'busy'>;
   releaseOrder(orderId: string): Promise<void>;
   ping(): Promise<void>;
+  close(): Promise<void>;
 }
 
 const now = () => new Date().toISOString();
 const defined = <T extends object>(value: T): T => Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
 
-export class FirestorePaymentStore implements PaymentStore {
-  private readonly db: Firestore;
-  private readonly orders: CollectionReference;
-  private readonly events: CollectionReference;
+const CREATE_ORDERS = `
+  CREATE TABLE IF NOT EXISTS teacher_mate_payment_orders (
+    order_id UUID PRIMARY KEY,
+    checkout_id TEXT UNIQUE,
+    order_data JSONB NOT NULL,
+    processing_lease_until BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`;
+const CREATE_EVENTS = `
+  CREATE TABLE IF NOT EXISTS teacher_mate_chargily_events (
+    event_id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    lease_until BIGINT NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`;
 
-  constructor(projectId: string) {
-    this.db = new Firestore({ projectId });
-    this.orders = this.db.collection('teacherMatePaymentOrders');
-    this.events = this.db.collection('teacherMateChargilyEvents');
+export class PostgresPaymentStore implements PaymentStore {
+  constructor(private readonly pool: Pool, private readonly connector?: Connector) {
+    this.pool.on('error', error => console.error('Unexpected PostgreSQL pool error:', safeError(error)));
+  }
+
+  async initialize(): Promise<void> {
+    await this.pool.query(CREATE_ORDERS);
+    await this.pool.query(CREATE_EVENTS);
+  }
+
+  private async transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await fn(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async createOrder(order: PaymentOrder): Promise<void> {
-    await this.db.runTransaction(async tx => {
-      const ref = this.orders.doc(order.orderId);
-      if ((await tx.get(ref)).exists) throw new Error('Payment order already exists.');
-      tx.create(ref, { ...order, updatedAt: now(), schemaVersion: 1 });
+    await this.pool.query(
+      'INSERT INTO teacher_mate_payment_orders (order_id, order_data, created_at, updated_at) VALUES ($1, $2::jsonb, NOW(), NOW())',
+      [order.orderId, JSON.stringify(order)]
+    );
+  }
+
+  async getOrder(orderId: string): Promise<PaymentOrder | undefined> {
+    const result = await this.pool.query<{ order_data: PaymentOrder }>(
+      'SELECT order_data FROM teacher_mate_payment_orders WHERE order_id = $1', [orderId]
+    );
+    return result.rows[0]?.order_data;
+  }
+
+  async getOrderByCheckoutId(checkoutId: string): Promise<PaymentOrder | undefined> {
+    const result = await this.pool.query<{ order_data: PaymentOrder }>(
+      'SELECT order_data FROM teacher_mate_payment_orders WHERE checkout_id = $1', [checkoutId]
+    );
+    return result.rows[0]?.order_data;
+  }
+
+  async updateOrder(orderId: string, patch: Partial<PaymentOrder>): Promise<void> {
+    await this.transaction(async client => {
+      const result = await client.query<{ order_data: PaymentOrder }>(
+        'SELECT order_data FROM teacher_mate_payment_orders WHERE order_id = $1 FOR UPDATE', [orderId]
+      );
+      const current = result.rows[0]?.order_data;
+      if (!current) throw new Error('Payment order not found.');
+      const updated = { ...current, ...defined(patch), updatedAt: now() };
+      await client.query(
+        'UPDATE teacher_mate_payment_orders SET checkout_id = $2, order_data = $3::jsonb, updated_at = NOW() WHERE order_id = $1',
+        [orderId, updated.checkoutId || null, JSON.stringify(updated)]
+      );
     });
   }
 
-  async getOrder(id: string): Promise<PaymentOrder | undefined> {
-    const doc = await this.orders.doc(id).get();
-    return doc.exists ? doc.data() as PaymentOrder : undefined;
-  }
-
-  async getOrderByCheckoutId(id: string): Promise<PaymentOrder | undefined> {
-    const result = await this.orders.where('checkoutId', '==', id).limit(1).get();
-    return result.empty ? undefined : result.docs[0].data() as PaymentOrder;
-  }
-
-  async updateOrder(id: string, patch: Partial<PaymentOrder>): Promise<void> {
-    await this.db.runTransaction(async tx => {
-      const ref = this.orders.doc(id);
-      if (!(await tx.get(ref)).exists) throw new Error('Payment order not found.');
-      tx.set(ref, { ...defined(patch), updatedAt: now() }, { merge: true });
-    });
-  }
-
-  async claimEvent(id: string, type: string, leaseMs: number): Promise<ClaimResult> {
-    const ref = this.events.doc(id);
-    return this.db.runTransaction(async tx => {
-      const snap = await tx.get(ref);
-      const data = snap.data();
-      if (data?.status === 'completed') return 'completed';
-      if (Number(data?.leaseUntil || 0) > Date.now()) return 'busy';
-      tx.set(ref, { eventType: type, status: 'processing', leaseUntil: Date.now() + leaseMs, attempts: Number(data?.attempts || 0) + 1, updatedAt: now() }, { merge: true });
+  async claimEvent(eventId: string, eventType: string, leaseMs: number): Promise<ClaimResult> {
+    return this.transaction(async client => {
+      const inserted = await client.query(
+        `INSERT INTO teacher_mate_chargily_events (event_id,event_type,status,lease_until,attempts,updated_at)
+         VALUES ($1,$2,'processing',$3,1,NOW()) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
+        [eventId, eventType, Date.now() + leaseMs]
+      );
+      if (inserted.rowCount) return 'acquired';
+      const existing = await client.query<{ status: string; lease_until: string | number }>(
+        'SELECT status, lease_until FROM teacher_mate_chargily_events WHERE event_id = $1 FOR UPDATE', [eventId]
+      );
+      const row = existing.rows[0];
+      if (!row) throw new Error('Unable to claim webhook event.');
+      if (row.status === 'completed') return 'completed';
+      if (Number(row.lease_until) > Date.now()) return 'busy';
+      await client.query(
+        `UPDATE teacher_mate_chargily_events SET event_type=$2,status='processing',lease_until=$3,attempts=attempts+1,updated_at=NOW() WHERE event_id=$1`,
+        [eventId, eventType, Date.now() + leaseMs]
+      );
       return 'acquired';
     });
   }
 
-  async completeEvent(id: string): Promise<void> {
-    await this.events.doc(id).set({ status: 'completed', leaseUntil: 0, updatedAt: now() }, { merge: true });
+  async completeEvent(eventId: string): Promise<void> {
+    await this.pool.query(
+      "UPDATE teacher_mate_chargily_events SET status='completed',lease_until=0,updated_at=NOW() WHERE event_id=$1", [eventId]
+    );
   }
 
-  async releaseEvent(id: string): Promise<void> {
-    await this.events.doc(id).set({ leaseUntil: 0, updatedAt: now() }, { merge: true });
+  async releaseEvent(eventId: string): Promise<void> {
+    await this.pool.query('UPDATE teacher_mate_chargily_events SET lease_until=0,updated_at=NOW() WHERE event_id=$1', [eventId]);
   }
 
-  async claimOrder(id: string, leaseMs: number): Promise<'acquired' | 'busy'> {
-    const ref = this.orders.doc(id);
-    return this.db.runTransaction(async tx => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error('Payment order not found.');
-      if (Number(snap.get('processingLeaseUntil') || 0) > Date.now()) return 'busy';
-      tx.set(ref, { processingLeaseUntil: Date.now() + leaseMs, updatedAt: now() }, { merge: true });
+  async claimOrder(orderId: string, leaseMs: number): Promise<'acquired' | 'busy'> {
+    return this.transaction(async client => {
+      const row = await client.query<{ processing_lease_until: string | number }>(
+        'SELECT processing_lease_until FROM teacher_mate_payment_orders WHERE order_id=$1 FOR UPDATE', [orderId]
+      );
+      if (!row.rows[0]) throw new Error('Payment order not found.');
+      if (Number(row.rows[0].processing_lease_until) > Date.now()) return 'busy';
+      await client.query('UPDATE teacher_mate_payment_orders SET processing_lease_until=$2,updated_at=NOW() WHERE order_id=$1', [orderId, Date.now() + leaseMs]);
       return 'acquired';
     });
   }
 
-  async releaseOrder(id: string): Promise<void> {
-    await this.orders.doc(id).set({ processingLeaseUntil: 0, updatedAt: now() }, { merge: true });
+  async releaseOrder(orderId: string): Promise<void> {
+    await this.pool.query('UPDATE teacher_mate_payment_orders SET processing_lease_until=0,updated_at=NOW() WHERE order_id=$1', [orderId]);
   }
 
   async ping(): Promise<void> {
-    await this.orders.limit(1).get();
+    await this.pool.query('SELECT 1');
+  }
+
+  async close(): Promise<void> {
+    await this.pool.end();
+    this.connector?.close();
   }
 }
 
@@ -183,31 +247,39 @@ export class MemoryPaymentStore implements PaymentStore {
   }
 
   async ping(): Promise<void> {}
+  async close(): Promise<void> {}
 }
 
 export const PAYMENT_LEASE_MS = 120_000;
-export const EXTERNAL_TIMEOUT_MS = 15_000;
 export const RESEND_IDEMPOTENCY_WINDOW_MS = 23 * 60 * 60 * 1000;
 
-export function createPaymentStore(): PaymentStore {
+export async function createPaymentStore(): Promise<PaymentStore> {
   if (process.env.NODE_ENV === 'test') return new MemoryPaymentStore();
-  const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
-  if (!projectId) throw new Error('GOOGLE_CLOUD_PROJECT is required for durable payment storage.');
-  return new FirestorePaymentStore(projectId);
+  const instanceConnectionName = process.env.INSTANCE_CONNECTION_NAME?.trim();
+  const user = process.env.DB_USER?.trim();
+  const database = process.env.DB_NAME?.trim();
+  const password = process.env.DB_PASS;
+  if (!instanceConnectionName || !user || !database || !password) {
+    throw new Error('INSTANCE_CONNECTION_NAME, DB_USER, DB_NAME and DB_PASS are required for persistent payment storage.');
+  }
+  const connector = new Connector();
+  try {
+    const ipType = process.env.CLOUD_SQL_IP_TYPE?.toUpperCase() === 'PRIVATE' ? IpAddressTypes.PRIVATE : IpAddressTypes.PUBLIC;
+    const clientOptions = await connector.getOptions({ instanceConnectionName, ipType });
+    const pool = new Pool({ ...clientOptions, user, password, database, max: 5, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 30_000 });
+    const store = new PostgresPaymentStore(pool, connector);
+    await store.initialize();
+    return store;
+  } catch (error) {
+    connector.close();
+    throw error;
+  }
 }
 
 export function needsManualReconciliation(order: PaymentOrder): boolean {
   return order.checkoutStatus === 'unknown'
     || order.fulfillmentStatus === 'license_creation_unknown'
     || order.fulfillmentStatus === 'email_delivery_unknown';
-}
-
-export function clientOrderStatus(order: PaymentOrder) {
-  return {
-    status: order.status === 'creating' ? 'pending' : order.status,
-    emailSent: order.fulfillmentStatus === 'email_sent',
-    needsSupport: needsManualReconciliation(order)
-  };
 }
 
 export function isStaleAttempt(value: string | undefined): boolean {
@@ -254,7 +326,7 @@ export function validOrderId(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
 }
 
-export function safeEventId(value: unknown): value is string {
+export function safeEventId(value: unknown): boolean {
   return typeof value === 'string' && value.length > 0 && value.length <= 128 && !value.includes('/');
 }
 

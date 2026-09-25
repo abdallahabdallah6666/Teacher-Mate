@@ -1,66 +1,72 @@
-# Chargily + LicenseSeat + Resend setup
+# Chargily + LicenseSeat + Resend with PostgreSQL
 
-The payment and fulfillment flow is: create a Chargily Pay V2 checkout; verify Chargily's signed `checkout.paid` event on the server; create a LicenseSeat license using its documented API; send the returned LicenseSeat key to the buyer with Resend; and mark delivery complete. The website's activation-key verifier also calls LicenseSeat, making LicenseSeat the source of truth. The browser return page reports that the email was delivered and does not reveal the license key.
+Payment and fulfillment follow this path: the server creates a Chargily Pay V2 checkout; verifies the signed `checkout.paid` webhook; creates a LicenseSeat license through its documented API; emails the returned key with Resend; and marks the order delivered. LicenseSeat remains the activation-key source of truth. The browser return page never exposes a key.
 
-## Required hosting secrets
+## Google AI Studio and Cloud SQL setup
 
-Set these as **server-side hosting secrets**. Do not put them in frontend code, commit them, or send them in chat.
+Google AI Studio's documented integration can provision Cloud SQL for PostgreSQL and deploy the full-stack application through Cloud Run. In AI Studio Build mode, choose **Enable Cloud SQL** and choose the intended Google Cloud project and region. Google documents that the project/location applies to integrated resources and that the location cannot be changed in place; confirm the account's starter-tier limits or any applicable Cloud SQL billing before enabling. The app's server adapter uses Google's Cloud SQL Node.js Connector and initializes its payment tables at startup.
+
+Configure these connection settings in the AI Studio/Cloud Run server-side environment:
+
+| Variable | Value | Secret? |
+| --- | --- | --- |
+| `INSTANCE_CONNECTION_NAME` | Cloud SQL instance connection name in `project:region:instance` form. | No |
+| `DB_USER` | PostgreSQL database user. | No |
+| `DB_NAME` | PostgreSQL database name. | No |
+| `DB_PASS` | Password for the database user. | **Yes** |
+| `CLOUD_SQL_IP_TYPE` | Optional; `PUBLIC` by default, or `PRIVATE` if private networking is configured. | No |
+
+The Cloud Run service identity needs the Cloud SQL Client role (`roles/cloudsql.client`) and database access. The connector uses Application Default Credentials for the secure instance connection; do not commit or download a service-account JSON key. Store `DB_PASS` as a hosting secret. Cloud SQL charges/quotas depend on the AI Studio project/tier; check the current [Cloud SQL for PostgreSQL pricing and starter-tier limits](https://docs.cloud.google.com/sql/docs/postgres/ai-assisted-coding-and-cloud-sql) before enabling. If AI Studio already created a Cloud SQL database for this app, use that instance's generated connection name, database and user instead of creating another one.
+
+## Required payment and email settings
+
+Set these as **server-side hosting secrets**. Never put provider secret values in frontend code, commit them, or send them in chat.
 
 | Variable | Value |
 | --- | --- |
-| `CHARGILY_SECRET_KEY` | Chargily V2 `test_sk_…` for sandbox or `live_sk_…` for live. The same key verifies webhook signatures. |
-| `LICENSESEAT_SECRET_KEY` | LicenseSeat secret key with both `licenses:create` and `licenses:validate` permissions. |
-| `LICENSESEAT_PRODUCT_SLUG` | Product slug from the LicenseSeat dashboard. |
-| `LICENSESEAT_PLAN_KEY_SINGLE` | Exact LicenseSeat plan **Key** for the website's `single` plan. |
-| `LICENSESEAT_PLAN_KEY_PRO` | Exact LicenseSeat plan **Key** for the website's `pro` plan. |
-| `LICENSESEAT_PLAN_KEY_SCHOOL` | Exact LicenseSeat plan **Key** for the website's `school` plan. |
-| `RESEND_API_KEY` | Server-side Resend API key. |
-| `LICENSE_EMAIL_FROM` | Sender such as `Teacher Mate <licenses@your-verified-domain.example>`. Resend requires a verified sender domain. |
-| `APP_URL` | Public HTTPS origin of this website. |
-| `GOOGLE_CLOUD_PROJECT` | Google Cloud project ID that owns the Firestore database. This is configuration, not a credential. |
+| `CHARGILY_SECRET_KEY` | Chargily V2 `test_sk_…` for sandbox or `live_sk_…` for production. It also verifies webhook signatures. |
+| `LICENSESEAT_SECRET_KEY` | LicenseSeat secret key with `licenses:create` and `licenses:validate` permissions. |
+| `RESEND_API_KEY` | Resend server-side API key. |
 
-Firestore credentials are not a value to paste into `.env` or chat. On Cloud Run, assign a runtime service identity and grant it `roles/datastore.user` on this project; the Google Cloud client library uses Application Default Credentials. For local development, use ADC for the same project. Do not download or commit a service-account JSON key. Enable billing, create the Firestore **Native mode** `(default)` database in the intended region, and choose that region carefully because it cannot be changed in place. Firestore has usage-based charges; review [current Google Cloud pricing](https://cloud.google.com/firestore/pricing), configure a budget alert and consider scheduled backups before going live. The server SDK uses IAM and bypasses Firestore Security Rules, so restrict project IAM and do not expose payment collections to the browser.
-
-Use the LicenseSeat **plan key**, not its plan display name or plan record UUID. The product, plans, and API key must first exist in the LicenseSeat dashboard. A missing plan key for a product tier prevents creation of a Chargily checkout, so the website should not take payment before fulfillment configuration is complete.
+Also configure `LICENSESEAT_PRODUCT_SLUG`, the exact `LICENSESEAT_PLAN_KEY_SINGLE`, `LICENSESEAT_PLAN_KEY_PRO`, and `LICENSESEAT_PLAN_KEY_SCHOOL` values from LicenseSeat, `LICENSE_EMAIL_FROM` on a Resend-verified domain, and the public HTTPS `APP_URL`. Plan keys/product slug are identifiers, not API secrets. Use LicenseSeat plan keys—not display names or record UUIDs. The app refuses checkout creation if any plan's fulfillment configuration is missing.
 
 ## Chargily setup
 
-The server chooses the API endpoint from the Chargily key prefix: test keys use `https://pay.chargily.net/test/api/v2`; live keys use `https://pay.chargily.net/api/v2`. Configure the Chargily webhook endpoint to:
+The server selects sandbox or production endpoint based on the Chargily key prefix. Configure the Chargily webhook endpoint as:
 
 ```text
 https://<your-host>/api/webhooks/chargily
 ```
 
-The code verifies `signature` as HMAC-SHA256 over the raw request body, checks the paid status, DZD amount and checkout metadata, and only then starts fulfillment. Browser redirects are not considered proof of payment.
+The server checks the `signature` HMAC-SHA256 over the raw request body, paid status, DZD amount, checkout ID, metadata and stored order. A browser redirect is not proof of payment. Set `APP_URL` to the deployed public HTTPS origin.
 
-## LicenseSeat creation and Resend email
+## LicenseSeat and Resend fulfillment
 
-For each paid order, the server calls `POST https://licenseseat.com/api/v1/products/{slug}/licenses` with the configured `plan_key` and order metadata. It stores the returned license key and sends it to the checkout email using `POST https://api.resend.com/emails`. Resend uses an order-specific `Idempotency-Key` so repeated payment events do not intentionally send duplicate messages. After creation, `/api/license/verify` validates entered keys with `POST /api/v1/products/{slug}/licenses/validate`.
+For each verified paid order, the server calls `POST https://licenseseat.com/api/v1/products/{slug}/licenses` with the configured `plan_key` and order metadata. It persists the returned key/ID in PostgreSQL, then sends the key to the buyer with `POST https://api.resend.com/emails`. Resend uses an order-specific idempotency key. `/api/license/verify` checks entered keys against LicenseSeat.
 
-LicenseSeat's custom create-license API does not send the customer email itself. The configured website email sender (Resend) sends the key returned by LicenseSeat. The API docs explicitly note that creating a license is not idempotent merely because an order ID is stored in metadata.
+## Durable payment data and recovery
 
-## Durable order state and recovery behavior
+The PostgreSQL adapter stores checkout orders (including fulfillment milestones and the delivered key) in `teacher_mate_payment_orders` and webhook deduplication/leases in `teacher_mate_chargily_events`. It creates these tables with `CREATE TABLE IF NOT EXISTS` at server startup; no Firestore setup, project ID or service-account JSON credential is used. Health readiness probes PostgreSQL, and the service does not start if durable payment storage is unavailable. The payment persistence layer is separate from the website's other existing in-memory user/tutorial/admin data; this change does not migrate those unrelated application stores.
 
-Chargily order records and webhook event claims now live in Firestore, so instance restarts and concurrent app instances share the payment state. Orders are written before checkout creation; signed paid events are validated and claimed transactionally before fulfillment; a lease prevents concurrent processing; fulfillment milestones and the Resend message ID are persisted. The server refuses to start if Firestore is not configured or reachable, and `/api/health` reports storage readiness.
+The implementation persists checkout intent before contacting Chargily and uses client-generated stable order IDs so retries reuse an existing checkout or stop for reconciliation instead of opening another. Webhook event/order claims use PostgreSQL transactions and leases to coordinate multiple instances. Fulfillment progress survives process restarts.
 
-There is an unavoidable distributed-transaction boundary between Firestore and providers. In particular, LicenseSeat's documented create endpoint does not offer an idempotency key or a reliable lookup by order metadata. If a LicenseSeat create request times out or the process stops after LicenseSeat accepts it but before Firestore records its response, the order is marked for **manual reconciliation**; the system does not blindly create a second license. Check LicenseSeat for the order metadata before taking any recovery action. A checkout-create timeout is likewise marked ambiguous, so check Chargily before asking the customer to try again. The browser shows a support message and order reference for these states.
+There remains an external exactly-once limit: LicenseSeat does not document an idempotency key for create-license or an authoritative order-metadata lookup. If a LicenseSeat create request times out after it may have succeeded, the order stops for reviewed manual reconciliation; the app will not blindly create another license. A checkout-creation timeout is also blocked from duplicate attempts until reconciled; a later valid signed paid webhook can still resolve it. Resend's documented idempotency lifetime is 24 hours, so the app retries ambiguous sends only within a conservative 23-hour window with the same key, then requires manual review. The app currently has no operator repair console; see the [payment reconciliation runbook](payment-reconciliation.md).
 
-Resend supports idempotency for 24 hours. The app reuses the same order-specific idempotency key and retries an ambiguous email send only within a conservative 23-hour window. If that window has elapsed without a stored success response, it switches to manual reconciliation instead of risking a duplicate email. Completed webhook IDs remain recorded to deduplicate redeliveries. The mock integration test exercises successful fulfillment, duplicate events, uncertain LicenseSeat creation, and safe email retry; it does not call production providers or a live Firestore database.
+Test with Chargily sandbox credentials, a LicenseSeat test product/plan, and a verified Resend sender before switching to live mode. The mocked flow test does not contact Cloud SQL or any live provider.
 
-Before real payments, provision Firestore and hosting identity, add all server-side secrets/configuration, point Chargily's webhook at the deployed HTTPS URL, and verify the test flow with sandbox Chargily, a LicenseSeat test product/plan, and a Resend verified sender. The ambiguous LicenseSeat case still needs an operator runbook/dashboard procedure; do not treat alert-free automation as exactly-once delivery across providers.
+## Official references
 
-## Official documentation
-
+- [Google AI Studio and Cloud SQL for PostgreSQL](https://docs.cloud.google.com/sql/docs/postgres/ai-assisted-coding-and-cloud-sql)
+- [Google Cloud SQL from Cloud Run](https://docs.cloud.google.com/sql/docs/postgres/connect-run)
+- [Cloud SQL Node.js Connector](https://github.com/GoogleCloudPlatform/cloud-sql-nodejs-connector)
+- [node-postgres TLS guidance](https://node-postgres.com/features/ssl)
 - [Chargily Pay V2 introduction](https://dev.chargily.com/pay-v2/introduction)
 - [Chargily create-checkout API](https://dev.chargily.com/pay-v2/api-reference/checkouts/create)
 - [Chargily webhook signature verification](https://dev.chargily.com/pay-v2/webhooks)
 - [LicenseSeat create-license guide](https://licenseseat.com/docs/api-reference-create-license/)
 - [LicenseSeat API quickstart and validation](https://licenseseat.com/docs/api-reference/)
-- [LicenseSeat sales and email delivery operations](https://licenseseat.com/docs/guides-sales-platform-operations/)
 - [Resend send-email API](https://resend.com/docs/api-reference/emails/send-email)
 - [Resend verified domains](https://resend.com/docs/dashboard/domains/introduction)
-- [Firestore IAM roles](https://docs.cloud.google.com/firestore/docs/security/iam)
-- [Cloud Run service identity](https://docs.cloud.google.com/run/docs/configuring/services/service-identity)
 
 ## Secret incident response
 

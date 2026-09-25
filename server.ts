@@ -53,7 +53,7 @@ function getGeminiClient() {
 const dbUsers = new Map<string, any>();
 const dbLicenses = new Map<string, any>();
 const dbInquiries = new Map<string, any>();
-const paymentStore: PaymentStore = createPaymentStore();
+let paymentStore: PaymentStore;
 
 // Seed clean database with only master admin account
 const initialUser = {
@@ -1607,6 +1607,7 @@ app.post("/api/license/verify", async (req, res) => {
 
 // Vite & Static file serving setup
 async function startServer() {
+  paymentStore = await createPaymentStore();
   await paymentStore.ping();
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -1628,6 +1629,6 @@ async function startServer() {
 }
 
 startServer().catch(error => {
-  console.error('Server startup failed; Firestore is required for payment safety:', safeError(error));
+  console.error('Server startup failed; PostgreSQL is required for payment safety:', safeError(error));
   process.exitCode = 1;
 });
