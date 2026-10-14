@@ -75,6 +75,9 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
   const fetchBlogPosts = async () => {
     try {
       const res = await fetch('/api/blog/posts');
+      if (!res.ok) return;
+      const ct = res.headers.get('content-type');
+      if (!ct || !ct.includes('application/json')) return;
       const json = await res.json();
       if (json.posts) {
         setPosts(json.posts);
@@ -87,6 +90,9 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
   const fetchTutorials = async () => {
     try {
       const res = await fetch('/api/tutorials');
+      if (!res.ok) return;
+      const ct = res.headers.get('content-type');
+      if (!ct || !ct.includes('application/json')) return;
       const json = await res.json();
       if (json.tutorials) {
         setTutorials(json.tutorials);
@@ -102,6 +108,9 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
   const fetchInquiries = async () => {
     try {
       const res = await fetch(`/api/inquiries?email=${encodeURIComponent(currentUser.email)}`);
+      if (!res.ok) return;
+      const ct = res.headers.get('content-type');
+      if (!ct || !ct.includes('application/json')) return;
       const json = await res.json();
       if (json.inquiries) {
         setInquiries(json.inquiries);
@@ -209,7 +218,8 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
 
   // Filtered Tutorials
   const filteredTutorials = tutorials.filter(tut => {
-    return tutorialFilter === 'all' || tut.category === tutorialFilter;
+    if (tutorialFilter === 'all') return true;
+    return tut.category === tutorialFilter;
   });
 
   return (
@@ -222,22 +232,18 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#0D9488] text-white text-[11px] font-extrabold rounded-full">
               <ShieldCheck className="w-3.5 h-3.5 text-white" />
               <span>
-                {lang === 'en' && 'Verified Account & Official License (Chargily Pay)'}
-                {lang === 'fr' && 'Compte vérifié & Licence officielle (Chargily Pay)'}
-                {lang === 'ar' && 'حساب أستاذ مؤكد ورخصة رسمية (Chargily Pay)'}
+                {lang === 'ar' ? 'حساب أستاذ مؤكد ورخصة رسمية (Chargily Pay)' : 'Verified Account & Official License (Chargily Pay)'}
               </span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-              {lang === 'en' && `Welcome, Prof. ${currentUser.fullName}`}
-              {lang === 'fr' && `Bienvenue, Prof. ${currentUser.fullName}`}
-              {lang === 'ar' && `أهلاً بك أستاذ ${currentUser.fullName}`}
+              {lang === 'ar' ? `أهلاً بك أستاذ ${currentUser.fullName}` : `Welcome, Prof. ${currentUser.fullName}`}
             </h1>
 
             <p className="text-blue-100 text-xs sm:text-sm leading-relaxed">
-              {lang === 'en' && `School: ${currentUser.schoolName || 'Primary Education'} | Wilaya: ${currentUser.wilaya} | Status: Active`}
-              {lang === 'fr' && `École : ${currentUser.schoolName || 'Éducation Primaire'} | Wilaya : ${currentUser.wilaya} | Statut : Actif`}
-              {lang === 'ar' && `المدرسة: ${currentUser.schoolName || 'التعليم الابتدائي'} | الولاية: ${currentUser.wilaya} | حالة الرخصة: نشط`}
+              {lang === 'ar'
+                ? `المدرسة: ${currentUser.schoolName || 'التعليم الابتدائي'} | الولاية: ${currentUser.wilaya} | حالة الرخصة: نشط`
+                : `School: ${currentUser.schoolName || 'Primary Education'} | Wilaya: ${currentUser.wilaya} | Status: Active`}
             </p>
           </div>
 
@@ -248,9 +254,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
             >
               <LogOut className="w-4 h-4 text-slate-300" />
               <span>
-                {lang === 'en' && 'Logout'}
-                {lang === 'fr' && 'Déconnexion'}
-                {lang === 'ar' && 'تسجيل الخروج'}
+                {lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}
               </span>
             </button>
           </div>
@@ -268,9 +272,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
           >
             <BookOpen className="w-4 h-4" />
             <span>
-              {lang === 'en' && 'Blog & Community'}
-              {lang === 'fr' && 'Blog & Discussions'}
-              {lang === 'ar' && 'المدونة والمجتمع البيداغوجي'}
+              {lang === 'ar' ? 'المدونة والمجتمع البيداغوجي' : 'Blog & Community'}
             </span>
           </button>
 
@@ -284,9 +286,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
           >
             <Video className="w-4 h-4" />
             <span>
-              {lang === 'en' && 'Video Tutorials'}
-              {lang === 'fr' && 'Tutoriels Vidéo'}
-              {lang === 'ar' && 'شروحات الفيديو'}
+              {lang === 'ar' ? 'شروحات الفيديو' : 'Video Tutorials'}
             </span>
           </button>
 
@@ -300,9 +300,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
           >
             <AlertTriangle className="w-4 h-4 text-amber-300" />
             <span>
-              {lang === 'en' && 'Inquiries & Urgent SOS'}
-              {lang === 'fr' && 'Demandes & Urgences SOS'}
-              {lang === 'ar' && 'نظام الاستفسارات وبلاغات SOS العاجلة'}
+              {lang === 'ar' ? 'نظام الاستفسارات وبلاغات SOS العاجلة' : 'Inquiries & Urgent SOS'}
             </span>
             {inquiries.some(i => i.isSOS) && (
               <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
@@ -319,9 +317,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
           >
             <Key className="w-4 h-4" />
             <span>
-              {lang === 'en' && 'Official License'}
-              {lang === 'fr' && 'Licence officielle'}
-              {lang === 'ar' && 'الرخصة الرسمية'}
+              {lang === 'ar' ? 'الرخصة الرسمية' : 'Official License'}
             </span>
           </button>
         </div>
@@ -337,7 +333,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                   onClick={() => setSelectedPost(null)}
                   className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-[#1E3A8A] text-xs font-extrabold rounded-md flex items-center gap-2 transition-colors"
                 >
-                  ← {lang === 'en' ? 'Back to articles' : lang === 'fr' ? 'Retour aux articles' : 'العودة لقائمة المقالات'}
+                  ← {lang === 'en' ? 'Back to articles' : 'العودة لقائمة المقالات'}
                 </button>
 
                 <div className="space-y-3">
@@ -345,7 +341,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                     {selectedPost.category}
                   </span>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-[#1E3A8A] leading-tight">
-                    {lang === 'en' ? (selectedPost.titleEn || selectedPost.titleFr || selectedPost.titleAr) : lang === 'fr' ? (selectedPost.titleFr || selectedPost.titleAr) : selectedPost.titleAr}
+                    {lang === 'en' ? (selectedPost.titleEn || selectedPost.titleAr) : selectedPost.titleAr}
                   </h2>
                   <div className="flex items-center gap-4 text-xs text-slate-500 pt-1 border-b border-slate-100 pb-4">
                     <span>{selectedPost.author}</span>
@@ -377,7 +373,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                       className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-[#1E3A8A] text-xs font-bold rounded-lg border border-blue-200 flex items-center gap-2 transition-all"
                     >
                       <ThumbsUp className="w-4 h-4 text-[#1E3A8A]" />
-                      <span>{lang === 'en' ? 'Like' : lang === 'fr' ? "J'aime" : 'أعجبني'} ({selectedPost.likesCount || 0})</span>
+                      <span>{lang === 'ar' ? 'أعجبني' : 'Like'} ({selectedPost.likesCount || 0})</span>
                     </button>
 
                     <button
@@ -385,13 +381,13 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                       className="px-4 py-2 bg-teal-50 hover:bg-teal-100 text-[#0D9488] text-xs font-bold rounded-lg border border-teal-200 flex items-center gap-2 transition-all"
                     >
                       <Sparkles className="w-4 h-4 text-[#0D9488]" />
-                      <span>{lang === 'en' ? 'Helpful Article' : lang === 'fr' ? 'Utile' : 'مقال مفيد جداً'} ({selectedPost.helpfulCount || 0})</span>
+                      <span>{lang === 'ar' ? 'مقال مفيد جداً' : 'Helpful Article'} ({selectedPost.helpfulCount || 0})</span>
                     </button>
                   </div>
 
                   <div className="text-xs text-slate-500 font-bold flex items-center gap-1.5">
                     <MessageSquare className="w-4 h-4 text-slate-400" />
-                    <span>{selectedPost.comments?.length || 0} {lang === 'en' ? 'Comments' : lang === 'fr' ? 'commentaires' : 'تعليقات ومناقشات'}</span>
+                    <span>{selectedPost.comments?.length || 0} {lang === 'ar' ? 'تعليقات ومناقشات' : 'Comments'}</span>
                   </div>
                 </div>
 
@@ -399,22 +395,20 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                 <div className="pt-6 border-t border-slate-200 space-y-6">
                   <h3 className="text-lg font-extrabold text-[#1E3A8A] flex items-center gap-2">
                     <MessageSquare className="w-5 h-5 text-[#0D9488]" />
-                    <span>{lang === 'en' ? 'Teacher Discussions & Feedback' : lang === 'fr' ? 'Commentaires des enseignants' : 'مناقشات الأساتذة وآراؤهم'}</span>
+                    <span>{lang === 'ar' ? 'مناقشات الأساتذة وآراؤهم' : 'Teacher Discussions & Feedback'}</span>
                   </h3>
 
                   {/* Add Comment Form */}
                   <form onSubmit={handleAddComment} className="bg-slate-50 p-4 border border-slate-200 rounded-xl space-y-3">
                     <label className="block text-xs font-bold text-slate-700">
-                      {lang === 'en' && 'Share your feedback or pedagogical question:'}
-                      {lang === 'fr' && 'Ajouter votre commentaire :'}
-                      {lang === 'ar' && 'أضف رأيك أو استفسارك البيداغوجي حول هذا الموضوع:'}
+                      {lang === 'ar' ? 'أضف رأيك أو استفسارك البيداغوجي حول هذا الموضوع:' : 'Share your feedback or pedagogical question:'}
                     </label>
                     <textarea
                       rows={3}
                       required
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
-                      placeholder={lang === 'en' ? 'Write your comment here...' : lang === 'fr' ? 'Écrivez votre commentaire ici...' : 'اكتب تعليقك هنا...'}
+                      placeholder={lang === 'ar' ? 'اكتب تعليقك هنا...' : 'Write your comment here...'}
                       className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs text-slate-800 focus:outline-none focus:border-[#0D9488]"
                     />
                     <div className="flex justify-end">
@@ -424,7 +418,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                         className="px-5 py-2 bg-[#0D9488] hover:bg-teal-700 text-white font-extrabold text-xs rounded-lg shadow-sm flex items-center gap-2 transition-all"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        <span>{submittingComment ? (lang === 'en' ? 'Publishing...' : lang === 'fr' ? 'Publication...' : 'جاري النشر...') : (lang === 'en' ? 'Publish' : lang === 'fr' ? 'Publier' : 'نشر التعليق')}</span>
+                        <span>{submittingComment ? (lang === 'ar' ? 'جاري النشر...' : 'Publishing...') : (lang === 'ar' ? 'نشر التعليق' : 'Publish')}</span>
                       </button>
                     </div>
                   </form>
@@ -449,7 +443,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                       ))
                     ) : (
                       <p className="text-xs text-slate-500 italic py-2">
-                        {lang === 'en' ? 'No comments yet. Be the first to comment!' : lang === 'fr' ? 'Aucun commentaire. Soyez le premier à commenter !' : 'لا توجد تعليقات بعد. كن أول من يضيف تعليقاً!'}
+                        {lang === 'ar' ? 'لا توجد تعليقات بعد. كن أول من يضيف تعليقاً!' : 'No comments yet. Be the first to comment!'}
                       </p>
                     )}
                   </div>
@@ -468,7 +462,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                       type="text"
                       value={blogSearch}
                       onChange={(e) => setBlogSearch(e.target.value)}
-                      placeholder={lang === 'en' ? 'Search articles and guides...' : lang === 'fr' ? 'Rechercher un article...' : 'البحث في المقالات والإرشادات...'}
+                      placeholder={lang === 'ar' ? 'البحث في المقالات والإرشادات...' : 'Search articles and guides...'}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 rtl:pr-9 rtl:pl-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#0D9488]"
                     />
                   </div>
@@ -484,10 +478,10 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
                       >
-                        {cat === 'all' ? (lang === 'en' ? 'All' : lang === 'fr' ? 'Tous' : 'الكل') : 
-                         cat === 'تدريس الإنجليزية' ? (lang === 'en' ? 'English Teaching' : lang === 'fr' ? 'Enseignement Anglais' : cat) :
-                         cat === 'تقييم المكتسبات' ? (lang === 'en' ? 'Competency Assessment' : lang === 'fr' ? 'Évaluation' : cat) :
-                         cat === 'تحديثات التطبيق' ? (lang === 'en' ? 'App Updates' : lang === 'fr' ? 'Mises à jour' : cat) : cat}
+                        {cat === 'all' ? (lang === 'ar' ? 'الكل' : 'All') : 
+                         cat === 'تدريس الإنجليزية' ? (lang === 'ar' ? cat : 'English Teaching') :
+                         cat === 'تقييم المكتسبات' ? (lang === 'ar' ? cat : 'Competency Assessment') :
+                         cat === 'تحديثات التطبيق' ? (lang === 'ar' ? cat : 'App Updates') : cat}
                       </button>
                     ))}
                   </div>
@@ -515,10 +509,10 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
 
                         <div className="p-5 space-y-2">
                           <h3 className="text-base font-extrabold text-[#1E3A8A] group-hover:text-[#0D9488] transition-colors leading-snug line-clamp-2">
-                            {lang === 'en' ? (post.titleEn || post.titleFr || post.titleAr) : lang === 'fr' ? (post.titleFr || post.titleAr) : post.titleAr}
+                            {lang === 'en' ? (post.titleEn || post.titleAr) : post.titleAr}
                           </h3>
                           <p className="text-xs text-slate-600 leading-relaxed line-clamp-3 font-normal">
-                            {lang === 'en' ? (post.excerptEn || post.excerptFr || post.excerptAr) : lang === 'fr' ? (post.excerptFr || post.excerptAr) : post.excerptAr}
+                            {lang === 'en' ? (post.excerptEn || post.excerptAr) : post.excerptAr}
                           </p>
                         </div>
                       </div>
@@ -535,7 +529,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                           </span>
                         </div>
                         <span className="font-extrabold text-[#0D9488]">
-                          {lang === 'en' ? 'Read Article →' : lang === 'fr' ? 'Lire l\'article →' : 'اقرأ المقال ←'}
+                          {lang === 'ar' ? 'اقرأ المقال ←' : 'Read Article →'}
                         </span>
                       </div>
                     </div>
@@ -552,27 +546,24 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
         {activeTab === 'tutorials' && (
           <div className="space-y-6">
             
-            {/* Filter buttons */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {['all', 'تثبيت البرنامج', 'صانع المذكرات الذكي', 'الفونكس والتمارين', 'تقييم المكتسبات', 'التفعيل بالذهبية'].map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setTutorialFilter(cat)}
-                  className={`px-3.5 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-                    tutorialFilter === cat
-                      ? 'bg-[#1E3A8A] text-white'
-                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {cat === 'all' ? (lang === 'en' ? 'All Tutorials' : lang === 'fr' ? 'Tous les tutoriels' : 'جميع الشروحات') : 
-                   cat === 'تثبيت البرنامج' ? (lang === 'en' ? 'Installation' : lang === 'fr' ? 'Installation' : cat) :
-                   cat === 'صانع المذكرات الذكي' ? (lang === 'en' ? 'Lesson Generator' : lang === 'fr' ? 'Générateur de Fiches' : cat) :
-                   cat === 'الفونكس والتمارين' ? (lang === 'en' ? 'Phonics & Exercises' : lang === 'fr' ? 'Phonétique' : cat) :
-                   cat === 'تقييم المكتسبات' ? (lang === 'en' ? 'Competency Assessment' : lang === 'fr' ? 'Évaluation' : cat) :
-                   cat === 'التفعيل بالذهبية' ? (lang === 'en' ? 'Edahabia Activation' : lang === 'fr' ? 'Activation Edahabia' : cat) : cat}
-                </button>
-              ))}
-            </div>
+            {/* Filter buttons (only if categories exist) */}
+            {tutorials.some(t => Boolean(t.category)) && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {['all', ...Array.from(new Set(tutorials.map(t => t.category).filter(Boolean)))].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setTutorialFilter(cat as string)}
+                    className={`px-3.5 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+                      tutorialFilter === cat
+                        ? 'bg-[#1E3A8A] text-white'
+                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {cat === 'all' ? (lang === 'ar' ? 'جميع الشروحات' : 'All Tutorials') : cat}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Selected Active Tutorial Player View */}
             {selectedTutorial && (
@@ -592,14 +583,18 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="px-2.5 py-0.5 bg-teal-50 text-[#0D9488] font-extrabold rounded-md">
-                          {selectedTutorial.category}
-                        </span>
-                        <span className="text-slate-400">•</span>
-                        <span className="text-slate-500 font-bold">{selectedTutorial.duration}</span>
+                        {selectedTutorial.category && (
+                          <>
+                            <span className="px-2.5 py-0.5 bg-teal-50 text-[#0D9488] font-extrabold rounded-md">
+                              {selectedTutorial.category}
+                            </span>
+                            <span className="text-slate-400">•</span>
+                          </>
+                        )}
+                        <span className="text-slate-500 font-bold">{selectedTutorial.duration || '05:00'}</span>
                       </div>
                       <h2 className="text-xl font-extrabold text-[#1E3A8A]">
-                        {lang === 'en' ? (selectedTutorial.titleEn || selectedTutorial.titleFr || selectedTutorial.titleAr) : lang === 'fr' ? selectedTutorial.titleFr : selectedTutorial.titleAr}
+                        {lang === 'en' ? (selectedTutorial.titleEn || selectedTutorial.titleAr) : selectedTutorial.titleAr}
                       </h2>
                       <p className="text-xs text-slate-600 leading-relaxed">
                         {lang === 'en' ? (selectedTutorial.descriptionEn || selectedTutorial.descriptionAr) : selectedTutorial.descriptionAr}
@@ -611,7 +606,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
                     <h3 className="text-sm font-extrabold text-[#1E3A8A] flex items-center gap-2 border-b border-slate-200 pb-2">
                       <FileText className="w-4 h-4 text-[#0D9488]" />
-                      <span>{lang === 'en' ? 'Key Implementation Steps' : lang === 'fr' ? 'Étapes clés' : 'الخطوات والتطبيق المباشر'}</span>
+                      <span>{lang === 'ar' ? 'الخطوات والتطبيق المباشر' : 'Key Implementation Steps'}</span>
                     </h3>
                     <ul className="space-y-3 text-xs text-slate-700">
                       {selectedTutorial.keySteps.map((step, idx) => (
@@ -630,8 +625,23 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
             )}
 
             {/* Tutorials List Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredTutorials.map((tut) => (
+            {filteredTutorials.length === 0 && !selectedTutorial ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+                  <Play className="w-6 h-6 text-[#0D9488]" />
+                </div>
+                <h4 className="text-sm font-extrabold text-[#1E3A8A]">
+                  {lang === 'ar' ? 'لا توجد فيديوهات توضيحية حالياً' : 'No Tutorial Videos Available Yet'}
+                </h4>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  {lang === 'ar'
+                    ? 'سيتم نشر شروحات فيديو تعليمية جديدة قريباً من طرف الإدارة.'
+                    : 'New instructional video tutorials will be published soon by the administration.'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredTutorials.map((tut) => (
                 <div
                   key={tut.id}
                   onClick={() => setSelectedTutorial(tut)}
@@ -652,16 +662,19 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                   </div>
 
                   <div className="p-4 space-y-2">
-                    <span className="text-[10px] font-extrabold text-[#0D9488] uppercase">
-                      {tut.category}
-                    </span>
+                    {tut.category && (
+                      <span className="text-[10px] font-extrabold text-[#0D9488] uppercase block">
+                        {tut.category}
+                      </span>
+                    )}
                     <h4 className="text-xs font-extrabold text-[#1E3A8A] line-clamp-2 leading-snug">
-                      {lang === 'en' ? (tut.titleEn || tut.titleFr || tut.titleAr) : lang === 'fr' ? tut.titleFr : tut.titleAr}
+                      {lang === 'en' ? (tut.titleEn || tut.titleAr) : tut.titleAr}
                     </h4>
                   </div>
                 </div>
               ))}
             </div>
+            )}
 
           </div>
         )}
@@ -678,10 +691,10 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                 <div className="border-b border-slate-100 pb-3">
                   <h3 className="text-base font-extrabold text-[#1E3A8A] flex items-center gap-2">
                     <HelpCircle className="w-5 h-5 text-[#0D9488]" />
-                    <span>{lang === 'en' ? 'Submit Inquiry or Urgent SOS' : lang === 'fr' ? 'Poser une question ou SOS' : 'طرح استفسار أو إبلاغ عاجل'}</span>
+                    <span>{lang === 'ar' ? 'طرح استفسار أو إبلاغ عاجل' : 'Submit Inquiry or Urgent SOS'}</span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
-                    {lang === 'en' ? 'Our technical support team is online to assist you.' : lang === 'fr' ? 'Support technique disponible en ligne.' : 'فريق الدعم الفني متواجد لمساعدتك أونلاين على مدار الأسبوع.'}
+                    {lang === 'ar' ? 'فريق الدعم الفني متواجد لمساعدتك أونلاين على مدار الأسبوع.' : 'Our technical support team is online to assist you.'}
                   </p>
                 </div>
 
@@ -708,12 +721,12 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                       <div className="space-y-0.5">
                         <span className="text-xs font-extrabold text-red-700 flex items-center gap-1.5">
                           <AlertTriangle className="w-4 h-4 text-red-600" />
-                          <span>{lang === 'en' ? '🚨 Activate Urgent SOS Priority Report' : lang === 'fr' ? '🚨 Signalement d\'urgence SOS Prioritaire' : '🚨 تفعيل بلاغ طوارئ عاجل جداً (SOS Priority)'}</span>
+                          <span>{lang === 'ar' ? '🚨 تفعيل بلاغ طوارئ عاجل جداً (SOS Priority)' : '🚨 Activate Urgent SOS Priority Report'}</span>
                         </span>
                         <p className="text-[11px] text-slate-600 leading-tight">
-                          {lang === 'en' && 'Select this option if you have an urgent offline key issue before an inspection visit.'}
-                          {lang === 'fr' && 'Cochez si problème urgent de licence avant visite d\'inspection.'}
-                          {lang === 'ar' && 'حدد هذا الخيار إذا كان لديك مشكلة طارئة في تفعيل الرخصة قبل زيارة المفتش أو خافش الدرس.'}
+                          {lang === 'ar'
+                            ? 'حدد هذا الخيار إذا كان لديك مشكلة طارئة في تفعيل الرخصة قبل زيارة المفتش أو خافش الدرس.'
+                            : 'Select this option if you have an urgent offline key issue before an inspection visit.'}
                         </p>
                       </div>
                     </label>
@@ -721,14 +734,14 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-[#1E3A8A] mb-1">
-                      {lang === 'en' ? 'Inquiry Subject' : lang === 'fr' ? 'Sujet' : 'موضوع الاستفسار'}
+                      {lang === 'ar' ? 'موضوع الاستفسار' : 'Inquiry Subject'}
                     </label>
                     <input
                       type="text"
                       required
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
-                      placeholder={lang === 'en' ? 'e.g., License activation issue on second PC' : lang === 'fr' ? 'Ex: Problème d\'activation sur le 2ème PC' : 'مثال: تعذر التفعيل أوفلاين على الحاسوب الثانية'}
+                      placeholder={lang === 'ar' ? 'مثال: تعذر التفعيل أوفلاين على الحاسوب الثانية' : 'e.g., License activation issue on second PC'}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#0D9488]"
                     />
                   </div>
@@ -736,7 +749,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                   {!isSOS && (
                     <div>
                       <label className="block text-xs font-bold text-[#1E3A8A] mb-1">
-                        {lang === 'en' ? 'Category' : lang === 'fr' ? 'Catégorie' : 'التصنيف'}
+                        {lang === 'ar' ? 'التصنيف' : 'Category'}
                       </label>
                       <select
                         value={category}
@@ -744,16 +757,16 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#0D9488]"
                       >
                         <option value="استفسار عن التفعيل">
-                          {lang === 'en' ? 'Edahabia License Activation Inquiry' : lang === 'fr' ? 'Question sur l\'activation de licence' : 'استفسار عن التفعيل بالذهبية'}
+                          {lang === 'ar' ? 'استفسار عن التفعيل بالذهبية' : 'Edahabia License Activation Inquiry'}
                         </option>
                         <option value="مشكلة في البرنامج">
-                          {lang === 'en' ? 'Software Technical Issue' : lang === 'fr' ? 'Problème technique logiciel' : 'مشكلة أو خطأ في برنامج الحاسوب'}
+                          {lang === 'ar' ? 'مشكلة أو خطأ في برنامج الحاسوب' : 'Software Technical Issue'}
                         </option>
                         <option value="اقتراح ميزة جديدة">
-                          {lang === 'en' ? 'New Pedagogical Feature Suggestion' : lang === 'fr' ? 'Suggestion de fonctionnalité' : 'اقتراح ميزة بيداغوجية جديدة'}
+                          {lang === 'en' ? 'New Pedagogical Feature Suggestion' : 'اقتراح ميزة بيداغوجية جديدة'}
                         </option>
                         <option value="طلب فترات تدريبية">
-                          {lang === 'en' ? 'AI Training Guide Request' : lang === 'fr' ? 'Demande de guide IA' : 'طلب دليل تدريبي لاستعمال الذكاء الاصطناعي'}
+                          {lang === 'en' ? 'AI Training Guide Request' : 'طلب دليل تدريبي لاستعمال الذكاء الاصطناعي'}
                         </option>
                       </select>
                     </div>
@@ -761,14 +774,14 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-[#1E3A8A] mb-1">
-                      {lang === 'en' ? 'Message Details' : lang === 'fr' ? 'Message' : 'تفاصيل الرسالة أو المشكلة'}
+                      {lang === 'en' ? 'Message Details' : 'تفاصيل الرسالة أو المشكلة'}
                     </label>
                     <textarea
                       rows={4}
                       required
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder={lang === 'en' ? 'Describe the issue or request in detail...' : lang === 'fr' ? 'Décrivez votre problème en détail...' : 'اشرح لنا بالتفصيل نوع المشكلة التي تواجهها...'}
+                      placeholder={lang === 'en' ? 'Describe the issue or request in detail...' : 'اشرح لنا بالتفصيل نوع المشكلة التي تواجهها...'}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#0D9488]"
                     />
                   </div>
@@ -785,8 +798,8 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                     <Send className="w-4 h-4" />
                     <span>
                       {submittingInquiry
-                        ? (lang === 'en' ? 'Sending...' : lang === 'fr' ? 'Envoi...' : 'جاري الإرسال...')
-                        : (isSOS ? (lang === 'en' ? 'Send Urgent SOS Report Immediately' : lang === 'fr' ? 'Envoyer SOS Urgent Immédiatement' : 'إرسال بلاغ SOS العاجل فورياً') : (lang === 'en' ? 'Send Inquiry' : lang === 'fr' ? 'Envoyer' : 'إرسال الاستفسار'))
+                        ? (lang === 'en' ? 'Sending...' : 'جاري الإرسال...')
+                        : (isSOS ? (lang === 'en' ? 'Send Urgent SOS Report Immediately' : 'إرسال بلاغ SOS العاجل فورياً') : (lang === 'en' ? 'Send Inquiry' : 'إرسال الاستفسار'))
                       }
                     </span>
                   </button>
@@ -801,12 +814,12 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                 <div className="flex items-center justify-between bg-white p-4 border border-slate-200 rounded-xl">
                   <h3 className="text-sm font-extrabold text-[#1E3A8A] flex items-center gap-2">
                     <Clock className="w-4 h-4 text-[#0D9488]" />
-                    <span>{lang === 'en' ? 'Previous Inquiries & SOS History' : lang === 'fr' ? 'Historique des demandes & SOS' : 'سجل الاستفسارات وبلاغات الطوارئ السابقة'}</span>
+                    <span>{lang === 'en' ? 'Previous Inquiries & SOS History' : 'سجل الاستفسارات وبلاغات الطوارئ السابقة'}</span>
                   </h3>
                   <button
                     onClick={fetchInquiries}
                     className="p-1.5 text-slate-500 hover:text-slate-800 bg-slate-100 rounded-md transition-colors"
-                    title={lang === 'en' ? 'Refresh Data' : lang === 'fr' ? 'Actualiser' : 'تحديث البيانات'}
+                    title={lang === 'en' ? 'Refresh Data' : 'تحديث البيانات'}
                   >
                     <RefreshCw className="w-4 h-4" />
                   </button>
@@ -842,8 +855,8 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                             inq.status === 'replied' ? 'bg-teal-100 text-teal-800' :
                             inq.status === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {inq.status === 'replied' ? (lang === 'en' ? 'Replied' : lang === 'fr' ? 'Répondu' : 'تمت الإجابة') :
-                             inq.status === 'pending' ? (lang === 'en' ? 'Processing' : lang === 'fr' ? 'En traitement' : 'قيد المعالجة السريعة') : (lang === 'en' ? 'Closed' : lang === 'fr' ? 'Fermé' : 'مغلق')}
+                            {inq.status === 'replied' ? (lang === 'en' ? 'Replied' : 'تمت الإجابة') :
+                             inq.status === 'pending' ? (lang === 'en' ? 'Processing' : 'قيد المعالجة السريعة') : (lang === 'en' ? 'Closed' : 'مغلق')}
                           </span>
                         </div>
 
@@ -857,11 +870,11 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                             <div className="flex items-center justify-between font-extrabold text-[#0D9488]">
                               <span className="flex items-center gap-1.5">
                                 <ShieldCheck className="w-4 h-4 text-[#0D9488]" />
-                                <span>{lang === 'en' ? 'Technical Admin Team Reply:' : lang === 'fr' ? 'Réponse de l\'équipe technique :' : 'رد المشرف الفني (Admin Team):'}</span>
+                                <span>{lang === 'en' ? 'Technical Admin Team Reply:' : 'رد المشرف الفني (Admin Team):'}</span>
                               </span>
                               {inq.repliedAt && (
                                 <span className="text-[10px] text-slate-400 font-normal">
-                                  {new Date(inq.repliedAt).toLocaleString(lang === 'en' ? 'en-US' : lang === 'fr' ? 'fr-FR' : 'ar-DZ')}
+                                  {new Date(inq.repliedAt).toLocaleString(lang === 'en' ? 'en-US' : 'ar-DZ')}
                                 </span>
                               )}
                             </div>
@@ -872,8 +885,8 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                         )}
 
                         <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1">
-                          <span>{lang === 'en' ? 'Ref ID:' : lang === 'fr' ? 'Réf :' : 'الرقم المرجعي:'} #{inq.id}</span>
-                          <span>{lang === 'en' ? 'Submitted:' : lang === 'fr' ? 'Date :' : 'تاريخ الإرسال:'} {new Date(inq.createdAt).toLocaleDateString(lang === 'en' ? 'en-US' : lang === 'fr' ? 'fr-FR' : 'ar-DZ')}</span>
+                          <span>{lang === 'en' ? 'Ref ID:' : 'الرقم المرجعي:'} #{inq.id}</span>
+                          <span>{lang === 'en' ? 'Submitted:' : 'تاريخ الإرسال:'} {new Date(inq.createdAt).toLocaleDateString(lang === 'en' ? 'en-US' : 'ar-DZ')}</span>
                         </div>
 
                       </div>
@@ -882,7 +895,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                     <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-2">
                       <HelpCircle className="w-8 h-8 text-slate-300 mx-auto" />
                       <p className="text-xs text-slate-500 font-bold">
-                        {lang === 'en' ? 'You have not submitted any inquiries or SOS alerts yet.' : lang === 'fr' ? 'Aucune demande enregistrée.' : 'لم تقم بإرسال أي استفسار أو بلاغ طوارئ حتى الآن.'}
+                        {lang === 'en' ? 'You have not submitted any inquiries or SOS alerts yet.' : 'لم تقم بإرسال أي استفسار أو بلاغ طوارئ حتى الآن.'}
                       </p>
                     </div>
                   )}
@@ -903,15 +916,15 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
               <div>
                 <h3 className="text-xl font-extrabold text-[#1E3A8A] flex items-center gap-2">
                   <Key className="w-5 h-5 text-[#0D9488]" />
-                  <span>{lang === 'en' ? 'Official App License Details' : lang === 'fr' ? 'Détails de la licence officielle' : 'بيانات الرخصة الرسمية للتطبيق'}</span>
+                  <span>{lang === 'en' ? 'Official App License Details' : 'بيانات الرخصة الرسمية للتطبيق'}</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {lang === 'en' ? 'Your official serial activation key to register the offline desktop app.' : lang === 'fr' ? 'Votre clé d\'activation officielle pour le logiciel PC hors ligne.' : 'هذا هو مفتاح التفعيل التسلسلي الخاص بحسابك لتنشيط تطبيق سطح المكتب أوفلاين.'}
+                  {lang === 'en' ? 'Your official serial activation key to register the offline desktop app.' : 'هذا هو مفتاح التفعيل التسلسلي الخاص بحسابك لتنشيط تطبيق سطح المكتب أوفلاين.'}
                 </p>
               </div>
 
               <span className="px-3.5 py-1 bg-teal-100 text-[#0D9488] font-extrabold text-xs rounded-full border border-teal-200">
-                {lang === 'en' ? 'Active License (Pro Plan)' : lang === 'fr' ? 'Licence Active (Plan Pro)' : 'رخصة مفعلة (الخطة الاحترافية)'}
+                {lang === 'en' ? 'Active License (Personal Yearly License)' : 'رخصة مفعلة (الرخصة السنوية الشخصية)'}
               </span>
             </div>
 
@@ -922,7 +935,7 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                     <Key className="w-3.5 h-3.5 text-teal-400" />
-                    <span>{lang === 'en' ? 'Serial Activation Key (License Key)' : lang === 'fr' ? 'Clé d\'activation officielle' : 'مفتاح التفعيل التسلسلي (License Key)'}</span>
+                    <span>{lang === 'en' ? 'Serial Activation Key (License Key)' : 'مفتاح التفعيل التسلسلي (License Key)'}</span>
                   </span>
                   <span className="text-[10px] px-2 py-0.5 bg-teal-900/60 text-teal-300 font-mono rounded">
                     RSA-2048 Signed
@@ -934,26 +947,26 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(currentUser.licenseKey || 'TC-ALG-PRO-8899-X2K1');
-                      alert(lang === 'en' ? 'License key copied to clipboard!' : lang === 'fr' ? 'Clé copiée dans le presse-papier !' : 'تم نسخ المفتاح بنجاح إلى الحافظة!');
+                      alert(lang === 'en' ? 'License key copied to clipboard!' : 'تم نسخ المفتاح بنجاح إلى الحافظة!');
                     }}
                     className="px-3 py-1.5 bg-[#0D9488] hover:bg-teal-700 text-white text-xs rounded-lg font-sans font-extrabold transition-all shadow-xs"
                   >
-                    {lang === 'en' ? 'Copy Key' : lang === 'fr' ? 'Copier' : 'نسخ المفتاح'}
+                    {lang === 'en' ? 'Copy Key' : 'نسخ المفتاح'}
                   </button>
                 </div>
 
                 <div className="space-y-1.5 text-xs text-slate-300 pt-1 border-t border-slate-800">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">{lang === 'en' ? 'Allowed Devices:' : lang === 'fr' ? 'Appareils autorisés :' : 'عدد الحواسيب المسموحة:'}</span>
-                    <span className="font-bold text-white">{lang === 'en' ? '3 PCs / USB Flash Drives' : lang === 'fr' ? '3 PC / Clés USB' : '3 حواسيب شخصية / فلاش ديسك'}</span>
+                    <span className="text-slate-400">{lang === 'en' ? 'Allowed Devices:' : 'عدد الحواسيب المسموحة:'}</span>
+                    <span className="font-bold text-white">{lang === 'en' ? '3 PCs / USB Flash Drives' : '3 حواسيب شخصية / فلاش ديسك'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">{lang === 'en' ? 'Expiration Date:' : lang === 'fr' ? 'Date d\'expiration :' : 'تاريخ انتهاء الصلاحية:'}</span>
-                    <span className="font-bold text-teal-300">{lang === 'en' ? 'September 01, 2027 (Full Year)' : lang === 'fr' ? '01 Septembre 2027 (1 An)' : '01 سبتمبر 2027 (سنة كاملة)'}</span>
+                    <span className="text-slate-400">{lang === 'en' ? 'Expiration Date:' : 'تاريخ انتهاء الصلاحية:'}</span>
+                    <span className="font-bold text-teal-300">{lang === 'en' ? 'September 01, 2027 (Full Year)' : '01 سبتمبر 2027 (سنة كاملة)'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">{lang === 'en' ? 'Activation Mode:' : lang === 'fr' ? 'Mode d\'activation :' : 'نوع التفعيل:'}</span>
-                    <span className="font-bold text-white">{lang === 'en' ? '100% Offline (No Internet Required)' : lang === 'fr' ? '100% Hors ligne (Sans Internet)' : 'أوفلاين 100% بدون إنترنت'}</span>
+                    <span className="text-slate-400">{lang === 'en' ? 'Activation Mode:' : 'نوع التفعيل:'}</span>
+                    <span className="font-bold text-white">{lang === 'en' ? '100% Offline (No Internet Required)' : 'أوفلاين 100% بدون إنترنت'}</span>
                   </div>
                 </div>
               </div>
@@ -962,31 +975,31 @@ export const TeacherHub: React.FC<TeacherHubProps> = ({
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4">
                 <h4 className="text-xs font-extrabold text-[#1E3A8A] uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-2">
                   <ShieldCheck className="w-4 h-4 text-[#0D9488]" />
-                  <span>{lang === 'en' ? 'Payment & E-Invoice Details' : lang === 'fr' ? 'Détails du paiement Chargily' : 'تفاصيل عملية الدفع والفاتورة الإلكترونية'}</span>
+                  <span>{lang === 'en' ? 'Payment & E-Invoice Details' : 'تفاصيل عملية الدفع والفاتورة الإلكترونية'}</span>
                 </h4>
 
                 <div className="space-y-2.5 text-xs text-slate-700 font-medium">
                   <div className="flex justify-between border-b border-slate-200/60 pb-2">
-                    <span className="text-slate-500">{lang === 'en' ? 'Payment Gateway:' : lang === 'fr' ? 'Passerelle de paiement :' : 'بوابة الدفع الإلكتروني:'}</span>
+                    <span className="text-slate-500">{lang === 'en' ? 'Payment Gateway:' : 'بوابة الدفع الإلكتروني:'}</span>
                     <span className="font-extrabold text-[#0D9488]">Chargily Pay v2 (Edahabia / CIB)</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-200/60 pb-2">
-                    <span className="text-slate-500">{lang === 'en' ? 'Total Amount Paid:' : lang === 'fr' ? 'Montant total payé :' : 'المبلغ الإجمالي المدفوع:'}</span>
+                    <span className="text-slate-500">{lang === 'en' ? 'Total Amount Paid:' : 'المبلغ الإجمالي المدفوع:'}</span>
                     <span className="font-bold text-slate-900">2,900 DZD</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-200/60 pb-2">
-                    <span className="text-slate-500">{lang === 'en' ? 'Account Holder:' : lang === 'fr' ? 'Titulaire du compte :' : 'اسم صاحب الحساب:'}</span>
+                    <span className="text-slate-500">{lang === 'en' ? 'Account Holder:' : 'اسم صاحب الحساب:'}</span>
                     <span className="font-bold text-slate-900">{currentUser.fullName}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-200/60 pb-2">
-                    <span className="text-slate-500">{lang === 'en' ? 'School & Wilaya:' : lang === 'fr' ? 'École & Wilaya :' : 'المدرسة والولاية:'}</span>
+                    <span className="text-slate-500">{lang === 'en' ? 'School & Wilaya:' : 'المدرسة والولاية:'}</span>
                     <span className="font-bold text-slate-900">{currentUser.schoolName} ({currentUser.wilaya})</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">{lang === 'en' ? 'License Status:' : lang === 'fr' ? 'Statut de licence :' : 'حالة التفعيل:'}</span>
+                    <span className="text-slate-500">{lang === 'en' ? 'License Status:' : 'حالة التفعيل:'}</span>
                     <span className="font-extrabold text-teal-700 flex items-center gap-1">
                       <CheckCircle className="w-3.5 h-3.5 text-[#0D9488]" />
-                      <span>{lang === 'en' ? 'Officially Activated & Verified' : lang === 'fr' ? 'Officiellement activé' : 'مفعل ومعتمد رسمياً'}</span>
+                      <span>{lang === 'en' ? 'Officially Activated & Verified' : 'مفعل ومعتمد رسمياً'}</span>
                     </span>
                   </div>
                 </div>

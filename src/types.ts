@@ -15,21 +15,19 @@ export type Wilaya = {
 
 export interface UserProfile {
   id: string;
-  firstName?: string;
-  lastName?: string;
   fullName: string;
   email: string;
   phoneNumber?: string;
   role: UserRole;
   wilaya: string;
-  schoolName: string;
-  referralSource?: string;
   primaryGrade: GradeLevel;
   licenseKey?: string;
   licenseStatus: 'trial' | 'active' | 'expired';
-  licensePlan?: 'single' | 'pro' | 'school';
+  licensePlan?: 'single' | 'pro' | 'school' | string;
   expiresAt?: string;
   createdAt: string;
+  schoolName?: string;
+  lastEmailSentAt?: string;
   isFlagged?: boolean;
   flagReason?: string;
   isBlocked?: boolean;
@@ -55,31 +53,31 @@ export interface DesktopFeature {
 }
 
 export interface LicensePlan {
-  id: 'single' | 'pro' | 'school';
+  id: 'pro' | string;
   nameAr: string;
-  nameFr: string;
+  nameFr?: string;
   priceDZD: number;
   period: string;
   popular?: boolean;
   featuresAr: string[];
-  featuresFr: string[];
+  featuresFr?: string[];
 }
 
 export interface PricingPlanConfig {
-  id: 'single' | 'pro' | 'school';
+  id: 'pro' | string;
   nameAr: string;
-  nameFr: string;
+  nameFr?: string;
   nameEn: string;
   priceDZD: number;
   periodAr: string;
-  periodFr: string;
+  periodFr?: string;
   periodEn: string;
   badgeAr?: string;
   badgeFr?: string;
   badgeEn?: string;
   popular?: boolean;
   featuresAr: string[];
-  featuresFr: string[];
+  featuresFr?: string[];
   featuresEn: string[];
 }
 
@@ -89,9 +87,9 @@ export interface PricingSettings {
   promoNoticeFr?: string;
   promoNoticeEn?: string;
   plans: {
-    single: PricingPlanConfig;
     pro: PricingPlanConfig;
-    school: PricingPlanConfig;
+    single?: PricingPlanConfig;
+    school?: PricingPlanConfig;
   };
 }
 
@@ -100,7 +98,7 @@ export interface LicenseRecord {
   key: string;
   userEmail: string;
   userName?: string;
-  plan: 'single' | 'pro' | 'school';
+  plan: 'pro' | string;
   status: 'active' | 'revoked' | 'expired';
   issuedAt: string;
   expiresAt: string;
@@ -245,13 +243,13 @@ export interface BlogPost {
 export interface TutorialVideo {
   id: string;
   titleAr: string;
-  titleFr: string;
-  descriptionAr: string;
+  titleFr?: string;
+  descriptionAr?: string;
   videoUrl: string;
   embedUrl?: string;
-  thumbnailUrl: string;
-  duration: string;
-  category: 'تثبيت البرنامج' | 'صانع المذكرات الذكي' | 'الفونكس والتمارين' | 'تقييم المكتسبات' | 'التفعيل بالذهبية';
+  thumbnailUrl?: string;
+  duration?: string;
+  category?: string;
   keySteps: string[];
   createdAt: string;
 }

@@ -24,17 +24,15 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigateToSection }) => 
             </div>
 
             <p className="text-slate-300 leading-relaxed font-normal">
-              {lang === 'ar' && 'مكتب العمل والبيئة البيداغوجية الشاملة المدعومة بالذكاء الاصطناعي والمصممة خصيصاً لمُعلمي المدارس الابتدائية الجزائرية (3AP, 4AP, 5AP).'}
-              {lang === 'fr' && 'Workspace intelligent pour les enseignants du primaire en Algérie.'}
-              {lang === 'en' && 'Desktop workspace for primary English teachers in Algeria (3AP, 4AP, 5AP).'}
+              {lang === 'ar'
+                ? 'مكتب العمل والبيئة البيداغوجية الشاملة المدعومة بالذكاء الاصطناعي والمصممة خصيصاً لمُعلمي المدارس الابتدائية الجزائرية (3AP, 4AP, 5AP).'
+                : 'Desktop workspace for primary English teachers in Algeria (3AP, 4AP, 5AP).'}
             </p>
 
             <div className="flex items-center gap-2 text-[#0D9488] font-bold text-[11px] bg-white/10 px-3 py-1.5 rounded-md border border-white/10 w-fit">
               <ShieldCheck className="w-4 h-4 text-[#0D9488]" />
               <span className="text-teal-200">
-                {lang === 'ar' && 'متوافق مع دليل المفتشية العامة للتربية'}
-                {lang === 'fr' && 'Conforme aux normes du Ministère'}
-                {lang === 'en' && 'Aligned with Ministry Standards'}
+                {lang === 'ar' ? 'متوافق مع دليل المفتشية العامة للتربية' : 'Aligned with Ministry Standards'}
               </span>
             </div>
           </div>
@@ -42,23 +40,17 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigateToSection }) => 
           {/* Quick Links */}
           <div className="space-y-3">
             <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-              {lang === 'ar' && 'روابط الوصول السريع'}
-              {lang === 'fr' && 'Navigation'}
-              {lang === 'en' && 'Navigation'}
+              {lang === 'ar' ? 'روابط الوصول السريع' : 'Navigation'}
             </h4>
             <ul className="space-y-2 text-slate-300">
               <li>
                 <button onClick={() => onNavigateToSection('features')} className="hover:text-teal-300 transition-colors">
-                  {lang === 'ar' && 'مميزات البرنامج'}
-                  {lang === 'fr' && 'Fonctionnalités'}
-                  {lang === 'en' && 'Features'}
+                  {lang === 'ar' ? 'مميزات البرنامج' : 'Features'}
                 </button>
               </li>
               <li>
                 <button onClick={() => onNavigateToSection('pricing')} className="hover:text-teal-300 transition-colors">
-                  {lang === 'ar' && 'الاشتراكات والأسعار'}
-                  {lang === 'fr' && 'Abonnements & Tarifs'}
-                  {lang === 'en' && 'Subscription & Pricing'}
+                  {lang === 'ar' ? 'الاشتراكات والأسعار' : 'Subscription & Pricing'}
                 </button>
               </li>
             </ul>
@@ -67,22 +59,18 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigateToSection }) => 
           {/* Payments & Chargily */}
           <div className="space-y-3">
             <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-              {lang === 'ar' && 'الدفع الإلكتروني والتفعيل'}
-              {lang === 'fr' && 'Paiement Sécurisé'}
-              {lang === 'en' && 'Online Payment'}
+              {lang === 'ar' ? 'الدفع الإلكتروني والتفعيل' : 'Online Payment'}
             </h4>
             <p className="text-slate-300 leading-relaxed font-normal">
-              {lang === 'ar' && 'نقبل جميع البطاقات البنكية الجزائرية CIB والبطاقة الذهبية لبريد الجزائر عبر بوابة Chargily Pay v2 الرسمية.'}
-              {lang === 'fr' && 'Paiement sécurisé par la carte Edahabia et CIB via Chargily Pay.'}
-              {lang === 'en' && 'Secure payment via Edahabia and CIB card using Chargily Pay.'}
+              {lang === 'ar'
+                ? 'نقبل جميع البطاقات البنكية الجزائرية CIB والبطاقة الذهبية لبريد الجزائر عبر بوابة Chargily Pay v2 الرسمية.'
+                : 'Secure payment via Edahabia and CIB card using Chargily Pay.'}
             </p>
 
             <div className="p-3 bg-blue-950/80 rounded-md border border-blue-800 space-y-1">
               <div className="text-[11px] font-bold text-teal-300">💳 Chargily Pay v2 Integrated</div>
               <div className="text-[10px] text-slate-300">
-                {lang === 'ar' && 'تفعيل فوري آلي تلقائي عقب إتمام العملية'}
-                {lang === 'fr' && 'Activation automatique immédiate'}
-                {lang === 'en' && 'Instant automatic activation after payment'}
+                {lang === 'ar' ? 'تفعيل فوري آلي تلقائي عقب إتمام العملية' : 'Instant automatic activation after payment'}
               </div>
             </div>
           </div>
@@ -90,22 +78,20 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigateToSection }) => 
           {/* Contact */}
           <div className="space-y-3">
             <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-              {lang === 'ar' && 'الدعم الفني والتواصل'}
-              {lang === 'fr' && 'Contact & Support'}
-              {lang === 'en' && 'Contact & Support'}
+              {lang === 'ar' ? 'الدعم الفني والتواصل' : 'Contact & Support'}
             </h4>
             <div className="space-y-2 text-slate-300">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-teal-300 shrink-0" />
-                <span>Algiers, Algeria</span>
+                <span>Annaba & Algiers, Algeria</span>
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-teal-300 shrink-0" />
-                <span>support@teachercompanion.dz</span>
+                <span>abdallahbourrich66@gmail.com</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-teal-300 shrink-0" />
-                <span dir="ltr">+213 (0) 23 88 99 00</span>
+                <span dir="ltr">+213 (0) 557 47 71 54</span>
               </div>
             </div>
           </div>

@@ -31,18 +31,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     if (!email.trim() || !email.includes('@')) {
       setError(
-        lang === 'ar' ? 'يرجى إدخال بريد إلكتروني صحيح' :
-        lang === 'fr' ? 'Veuillez saisir une adresse e-mail valide' :
-        'Please enter a valid email address'
+        lang === 'ar' ? 'يرجى إدخال بريد إلكتروني صحيح' : 'Please enter a valid email address'
       );
       return;
     }
 
     if (!password) {
       setError(
-        lang === 'ar' ? 'يرجى إدخال كلمة المرور' :
-        lang === 'fr' ? 'Veuillez entrer votre mot de passe' :
-        'Please enter your password'
+        lang === 'ar' ? 'يرجى إدخال كلمة المرور' : 'Please enter your password'
       );
       return;
     }
@@ -59,13 +55,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         })
       });
 
-      const json = await res.json();
+      const ct = res.headers.get('content-type');
+      const json = ct && ct.includes('application/json') ? await res.json() : {};
 
       if (!res.ok || json.error) {
         setError(json.error || (
-          lang === 'ar' ? 'تعذر تسجيل الدخول. يرجى التأكد من البريد الإلكتروني وكلمة المرور' :
-          lang === 'fr' ? 'Échec de connexion. Vérifiez vos identifiants' :
-          'Login failed. Please check your credentials'
+          lang === 'ar' ? 'تعذر تسجيل الدخول. يرجى التأكد من البريد الإلكتروني وكلمة المرور' : 'Login failed. Please check your credentials'
         ));
         setLoading(false);
         return;
@@ -77,9 +72,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     } catch (err) {
       console.error(err);
       setError(
-        lang === 'ar' ? 'حدث خطأ أثناء الاتصال بالخادم' :
-        lang === 'fr' ? 'Erreur de connexion au serveur' :
-        'Server connection error'
+        lang === 'ar' ? 'حدث خطأ أثناء الاتصال بالخادم' : 'Server connection error'
       );
       setLoading(false);
     }
@@ -103,7 +96,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           displayName: user.displayName || user.email || 'Teacher'
         })
       });
-      const data = await syncRes.json();
+      const ct = syncRes.headers.get('content-type');
+      const data = ct && ct.includes('application/json') ? await syncRes.json() : {};
       if (data.user) {
         onLoginSuccess(data.user);
       } else {
@@ -124,9 +118,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     } catch (err: any) {
       console.error(err);
       setError(
-        lang === 'ar' ? 'تعذر تسجيل الدخول بواسطة Google' :
-        lang === 'fr' ? 'Impossible de se connecter avec Google' :
-        'Failed to sign in with Google'
+        lang === 'ar' ? 'تعذر تسجيل الدخول بواسطة Google' : 'Failed to sign in with Google'
       );
     } finally {
       setLoading(false);
@@ -152,14 +144,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <LogIn className="w-6 h-6" />
           </div>
           <h3 className="text-2xl font-extrabold text-[#1E3A8A]">
-            {lang === 'ar' && 'تسجيل الدخول'}
-            {lang === 'fr' && 'Se connecter'}
-            {lang === 'en' && 'Log In'}
+            {lang === 'ar' ? 'تسجيل الدخول' : 'Log In'}
           </h3>
           <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-            {lang === 'ar' && 'أدخل بريدك الإلكتروني وكلمة المرور للوصول المباشر إلى Hub الأساتذة ورخصتك الرسمية.'}
-            {lang === 'fr' && 'Connectez-vous pour accéder à votre espace enseignant et vos licences.'}
-            {lang === 'en' && 'Enter your credentials to access your teacher hub and license key.'}
+            {lang === 'ar' ? 'أدخل بريدك الإلكتروني وكلمة المرور للوصول المباشر إلى Hub الأساتذة ورخصتك الرسمية.' : 'Enter your credentials to access your teacher hub and license key.'}
           </p>
         </div>
 
@@ -172,9 +160,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-[#1E3A8A] mb-1">
-              {lang === 'ar' && 'البريد الإلكتروني'}
-              {lang === 'fr' && 'Adresse e-mail'}
-              {lang === 'en' && 'Email Address'}
+              {lang === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}
               <span className="text-red-500 ms-0.5">*</span>
             </label>
             <div className="relative">
@@ -192,9 +178,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
           <div>
             <label className="block text-xs font-bold text-[#1E3A8A] mb-1">
-              {lang === 'ar' && 'كلمة المرور'}
-              {lang === 'fr' && 'Mot de passe'}
-              {lang === 'en' && 'Password'}
+              {lang === 'ar' ? 'كلمة المرور' : 'Password'}
               <span className="text-red-500 ms-0.5">*</span>
             </label>
             <div className="relative">
@@ -218,16 +202,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             >
               {loading ? (
                 <span>
-                  {lang === 'ar' && 'جاري تسجيل الدخول...' }
-                  {lang === 'fr' && 'Connexion en cours...' }
-                  {lang === 'en' && 'Logging in...' }
+                  {lang === 'ar' ? 'جاري تسجيل الدخول...' : 'Logging in...'}
                 </span>
               ) : (
                 <>
                   <span>
-                    {lang === 'ar' && 'تسجيل الدخول والوصول المباشر'}
-                    {lang === 'fr' && 'Se connecter et accéder'}
-                    {lang === 'en' && 'Log In & Access'}
+                    {lang === 'ar' ? 'تسجيل الدخول والوصول المباشر' : 'Log In & Access'}
                   </span>
                   <ArrowRight className="w-4 h-4 rtl:rotate-180" />
                 </>
@@ -238,7 +218,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           <div className="relative flex py-2 items-center">
             <div className="flex-grow border-t border-slate-200"></div>
             <span className="flex-shrink mx-3 text-[11px] text-slate-400 font-medium">
-              {lang === 'ar' ? 'أو عبر' : lang === 'fr' ? 'Ou avec' : 'Or with'}
+              {lang === 'ar' ? 'أو عبر' : 'Or with'}
             </span>
             <div className="flex-grow border-t border-slate-200"></div>
           </div>
@@ -256,9 +236,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
             </svg>
             <span>
-              {lang === 'ar' && 'تسجيل الدخول باستخدام Google'}
-              {lang === 'fr' && 'Continuer avec Google'}
-              {lang === 'en' && 'Continue with Google'}
+              {lang === 'ar' ? 'تسجيل الدخول باستخدام Google' : 'Continue with Google'}
             </span>
           </button>
         </form>

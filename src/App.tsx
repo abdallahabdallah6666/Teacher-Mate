@@ -168,9 +168,13 @@ export default function App() {
         }}
         selectedPlanForCheckout={selectedPlanForCheckout}
         onSignupSuccess={handleSignupSuccess}
+        currentUser={user}
       />
 
-      <ChargilyReturnNotice lang={activeLang} />
+      <ChargilyReturnNotice
+        lang={activeLang}
+        onPaymentSuccess={handleSignupSuccess}
+      />
 
     </div>
   );

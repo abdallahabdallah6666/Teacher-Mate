@@ -63,7 +63,18 @@ export const ALGERIAN_WILAYAS: Wilaya[] = [
   { code: '55', nameAr: 'تقرت', nameFr: 'Touggourt' },
   { code: '56', nameAr: 'جانت', nameFr: 'Djanet' },
   { code: '57', nameAr: 'إن صالح', nameFr: 'In Salah' },
-  { code: '58', nameAr: 'إن قزام', nameFr: 'In Guezzam' }
+  { code: '58', nameAr: 'إن قزام', nameFr: 'In Guezzam' },
+  { code: '59', nameAr: 'آفلو', nameFr: 'Aflou' },
+  { code: '60', nameAr: 'بريكة', nameFr: 'Barika' },
+  { code: '61', nameAr: 'القنطرة', nameFr: 'El Kantara' },
+  { code: '62', nameAr: 'بئر العاتر', nameFr: 'Bir El Ater' },
+  { code: '63', nameAr: 'العريشة', nameFr: 'El Aricha' },
+  { code: '64', nameAr: 'قصر الشلالة', nameFr: 'Ksar Chellala' },
+  { code: '65', nameAr: 'عين وسارة', nameFr: 'Aïn Oussera' },
+  { code: '66', nameAr: 'مسعد', nameFr: 'Messaad' },
+  { code: '67', nameAr: 'قصر البخاري', nameFr: 'Ksar El Boukhari' },
+  { code: '68', nameAr: 'بوسعادة', nameFr: 'Bou Saâda' },
+  { code: '69', nameAr: 'الأبيض سيدي الشيخ', nameFr: 'El Abiodh Sidi Cheikh' }
 ];
 
 export const PRIMARY_SUBJECTS: SubjectModule[] = [

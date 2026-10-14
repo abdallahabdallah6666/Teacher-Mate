@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import type { PoolClient } from 'pg';
-import { Connector, IpAddressTypes } from '@google-cloud/cloud-sql-connector';
+
 
 export type PaymentOrder = {
   orderId: string;
@@ -10,6 +10,7 @@ export type PaymentOrder = {
   userEmail: string;
   userName: string;
   amount: number;
+  promoCode?: string;
   licenseKey?: string;
   licenseSeatLicenseId?: string;
   resendEmailId?: string;
@@ -70,13 +71,14 @@ const CREATE_EVENTS = `
   )`;
 
 export class PostgresPaymentStore implements PaymentStore {
-  constructor(private readonly pool: Pool, private readonly connector?: Connector) {
+  private readonly pool: Pool;
+  constructor(pool: Pool) {
+    this.pool = pool;
     this.pool.on('error', error => console.error('Unexpected PostgreSQL pool error:', safeError(error)));
   }
 
   async initialize(): Promise<void> {
-    await this.pool.query(CREATE_ORDERS);
-    await this.pool.query(CREATE_EVENTS);
+    // Database tables are provisioned via Drizzle schema (cloudsql-update-schema)
   }
 
   private async transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -185,11 +187,10 @@ export class PostgresPaymentStore implements PaymentStore {
 
   async close(): Promise<void> {
     await this.pool.end();
-    this.connector?.close();
   }
 }
 
-/** In-memory adapter is available only to mocked tests. */
+/** In-memory adapter fallback or for tests. */
 export class MemoryPaymentStore implements PaymentStore {
   private readonly orders = new Map<string, PaymentOrder>();
   private readonly events = new Map<string, { status: string; leaseUntil: number; attempts: number }>();
@@ -255,25 +256,26 @@ export const RESEND_IDEMPOTENCY_WINDOW_MS = 23 * 60 * 60 * 1000;
 
 export async function createPaymentStore(): Promise<PaymentStore> {
   if (process.env.NODE_ENV === 'test') return new MemoryPaymentStore();
-  const instanceConnectionName = process.env.INSTANCE_CONNECTION_NAME?.trim();
-  const user = process.env.DB_USER?.trim();
-  const database = process.env.DB_NAME?.trim();
-  const password = process.env.DB_PASS;
-  if (!instanceConnectionName || !user || !database || !password) {
-    throw new Error('INSTANCE_CONNECTION_NAME, DB_USER, DB_NAME and DB_PASS are required for persistent payment storage.');
+  const host = (process.env.SQL_HOST || process.env.DB_HOST)?.trim();
+  const user = (process.env.SQL_USER || process.env.DB_USER)?.trim();
+  const database = (process.env.SQL_DB_NAME || process.env.DB_NAME)?.trim();
+  const password = process.env.SQL_PASSWORD || process.env.DB_PASS;
+
+  if (host && user && database && password) {
+    const pool = new Pool({
+      host,
+      user,
+      password,
+      database,
+      max: 5,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000,
+    });
+    return new PostgresPaymentStore(pool);
   }
-  const connector = new Connector();
-  try {
-    const ipType = process.env.CLOUD_SQL_IP_TYPE?.toUpperCase() === 'PRIVATE' ? IpAddressTypes.PRIVATE : IpAddressTypes.PUBLIC;
-    const clientOptions = await connector.getOptions({ instanceConnectionName, ipType });
-    const pool = new Pool({ ...clientOptions, user, password, database, max: 5, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 30_000 });
-    const store = new PostgresPaymentStore(pool, connector);
-    await store.initialize();
-    return store;
-  } catch (error) {
-    connector.close();
-    throw error;
-  }
+
+  console.warn('PostgreSQL environment variables (SQL_HOST, SQL_USER, SQL_PASSWORD, SQL_DB_NAME) not fully configured; using MemoryPaymentStore fallback.');
+  return new MemoryPaymentStore();
 }
 
 export function needsManualReconciliation(order: PaymentOrder): boolean {

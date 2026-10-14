@@ -45,32 +45,27 @@ export const FeatureGrid: React.FC<FeatureGridProps> = ({ lang }) => {
     {
       id: 'all',
       ar: 'الكل',
-      fr: 'Tous',
-      en: 'All'
+      en: 'All Features'
     },
     {
       id: 'إدارة وتنظيم',
-      ar: 'إدارة وتنظيم',
-      fr: 'Gestion & Admin',
-      en: 'Classroom Admin'
+      ar: 'إدارة وتنظيم القسم',
+      en: 'Classroom & Admin'
     },
     {
       id: 'ذكاء اصطناعي وبيداغوجيا',
       ar: 'ذكاء اصطناعي وبيداغوجيا',
-      fr: 'IA & Pédagogie',
-      en: 'AI & Pedagogy'
+      en: 'AI Lesson Planning'
     },
     {
       id: 'تقويم وتنقيط',
-      ar: 'تقويم وتنقيط',
-      fr: 'Évaluation & Notes',
+      ar: 'تقويم المكتسبات والنقاط',
       en: 'Assessment & Grades'
     },
     {
       id: 'أنشطة ووسائل',
-      ar: 'أنشطة ووسائل',
-      fr: 'Activités & Outils',
-      en: 'Activities & Resources'
+      ar: 'الصوتيات والوسائل البصرية',
+      en: 'Phonics & Visual Aids'
     }
   ];
 
@@ -86,20 +81,16 @@ export const FeatureGrid: React.FC<FeatureGridProps> = ({ lang }) => {
         <div className="text-center max-w-3xl mx-auto space-y-3">
           <div className="inline-block px-3.5 py-1 bg-[#0D9488] text-white text-[11px] font-extrabold uppercase tracking-widest rounded-full shadow-sm">
             <span>
-              {lang === 'ar' && 'منظومة حاسوب مخصصة لأستاذ اللغة الإنجليزية'}
-              {lang === 'fr' && 'Suite logicielle pour enseignants d\'Anglais'}
-              {lang === 'en' && 'Desktop Teaching Suite for Primary English'}
+              {lang === 'ar' ? 'منظومة حاسوب متكاملة لأستاذ اللغة الإنجليزية' : 'Desktop Teaching Suite for Primary English'}
             </span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1E3A8A]">
-            {lang === 'ar' && 'بعض مميزات برنامج رفيق المعلم (English Edition)'}
-            {lang === 'fr' && 'Principales fonctionnalités de Teacher Companion'}
-            {lang === 'en' && 'Key Features of Teacher Companion (English Edition)'}
+            {lang === 'ar' ? 'مميزات وأدوات رفيق أستاذ الإنجليزية (English Edition)' : 'Key Features of Teacher Companion (English Edition)'}
           </h2>
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            {lang === 'ar' && 'تغطية شاملة لجميع السجلات الإدارية والبيداغوجية لمادة اللغة الإنجليزية، إعداد مذكرات دروس My Book of English بالذكاء الاصطناعي، بطاقات الفونكس والفلاب كاردز، وتقييم مكتسبات 5AP.'}
-            {lang === 'fr' && 'Couverture complète des outils administratifs et pédagogiques pour l\'enseignement de l\'anglais au primaire en Algérie.'}
-            {lang === 'en' && 'Comprehensive set of tools for primary English teaching in Algeria: AI lesson plans, phonics worksheets, flashcards, and 5AP competency evaluations.'}
+            {lang === 'ar'
+              ? 'تغطية شاملة لجميع السجلات الإدارية والبيداغوجية لمادة اللغة الإنجليزية، إعداد مذكرات دروس My Book of English بالذكاء الاصطناعي، بطاقات الصوتيات والفلاب كاردز، وتقييم مكتسبات 5AP.'
+              : 'Comprehensive set of tools for primary English teaching in Algeria: AI lesson plans, phonics worksheets, flashcards, and 5AP competency evaluations.'}
           </p>
         </div>
 
@@ -115,9 +106,7 @@ export const FeatureGrid: React.FC<FeatureGridProps> = ({ lang }) => {
                   : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300'
               }`}
             >
-              {lang === 'ar' && cat.ar}
-              {lang === 'fr' && cat.fr}
-              {lang === 'en' && cat.en}
+              {lang === 'ar' ? cat.ar : cat.en}
             </button>
           ))}
         </div>
@@ -127,10 +116,10 @@ export const FeatureGrid: React.FC<FeatureGridProps> = ({ lang }) => {
           {filteredFeatures.map((feature) => {
             const Icon = ICON_MAP[feature.iconName] || Sparkles;
 
-            const title = lang === 'ar' ? feature.titleAr : lang === 'fr' ? feature.titleFr : feature.titleEn;
-            const description = lang === 'ar' ? feature.descriptionAr : lang === 'fr' ? feature.descriptionFr : feature.descriptionEn;
-            const tag = lang === 'ar' ? feature.tagAr : lang === 'fr' ? feature.tagFr : feature.tagEn;
-            const highlights = lang === 'ar' ? feature.highlightsAr : lang === 'fr' ? feature.highlightsFr : feature.highlightsEn;
+            const title = lang === 'ar' ? feature.titleAr : feature.titleEn;
+            const description = lang === 'ar' ? feature.descriptionAr : feature.descriptionEn;
+            const tag = lang === 'ar' ? feature.tagAr : feature.tagEn;
+            const highlights = lang === 'ar' ? feature.highlightsAr : feature.highlightsEn;
 
             return (
               <div
@@ -172,9 +161,7 @@ export const FeatureGrid: React.FC<FeatureGridProps> = ({ lang }) => {
 
                 <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-500">
                   <span className="text-[11px] text-[#0D9488] font-semibold">
-                    {lang === 'ar' && 'مدمج في تطبيق سطح المكتب PC'}
-                    {lang === 'fr' && 'Inclus dans l\'application PC'}
-                    {lang === 'en' && 'Included in Desktop PC App'}
+                    {lang === 'ar' ? 'مدمج في تطبيق سطح المكتب PC' : 'Included in Desktop PC App'}
                   </span>
                   <CheckCircle2 className="w-4 h-4 text-[#0D9488]" />
                 </div>

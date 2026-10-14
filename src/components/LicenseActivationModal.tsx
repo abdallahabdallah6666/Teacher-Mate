@@ -43,7 +43,6 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
         onLicenseActivated(json.licenseKey);
         alert(
           lang === 'ar' ? 'تم تفعيل البرنامج بنجاح! شكراً لاستخدامك Teacher Companion' :
-          lang === 'fr' ? 'Activation réussie! Merci d\'utiliser Teacher Companion' :
           'Software activated successfully! Thank you for using Teacher Companion'
         );
         onClose();
@@ -51,7 +50,6 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
         alert(
           json.message || (
             lang === 'ar' ? 'مفتاح التفعيل غير صحيح' :
-            lang === 'fr' ? 'Clé d\'activation invalide' :
             'Invalid activation key'
           )
         );
@@ -60,7 +58,6 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
       console.error(err);
       alert(
         lang === 'ar' ? 'تعذر التحقق من مفتاح الرخصة' :
-        lang === 'fr' ? 'Impossible de vérifier la clé' :
         'Unable to verify activation key'
       );
     } finally {
@@ -91,7 +88,6 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
       } else {
         alert(
           json.error || (lang === 'ar' ? 'تعذر إنشاء طلب الدفع' :
-          lang === 'fr' ? 'Impossible d\'initier le paiement' :
           'Failed to initialize checkout')
         );
       }
@@ -99,7 +95,6 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
       console.error(err);
       alert(
         lang === 'ar' ? 'خطأ أثناء معالجة عملية الشراء' :
-        lang === 'fr' ? 'Erreur lors du traitement de l\'achat' :
         'Error processing purchase'
       );
     } finally {
@@ -132,14 +127,14 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
           </div>
           <h3 className="text-xl font-bold text-[#1E3A8A]">
             {selectedPlanForCheckout
-              ? (lang === 'ar' ? 'الشراء والدفع الإلكتروني' : lang === 'fr' ? 'Abonnement et Paiement' : 'Checkout & Subscription')
-              : (lang === 'ar' ? 'تفعيل رخصة برنامج Teacher Companion' : lang === 'fr' ? 'Activation de licence Teacher Companion' : 'Activate Teacher Companion License')
+              ? (lang === 'ar' ? 'الشراء والدفع الإلكتروني' : 'Checkout & Subscription')
+              : (lang === 'ar' ? 'تفعيل رخصة برنامج Teacher Companion' : 'Activate Teacher Companion License')
             }
           </h3>
           <p className="text-xs text-slate-500">
             {selectedPlanForCheckout
-              ? (lang === 'ar' ? `الخطة المختارة: ${selectedPlanForCheckout.nameAr}` : lang === 'fr' ? `Formule: ${selectedPlanForCheckout.nameFr}` : `Plan: Full Annual Subscription`)
-              : (lang === 'ar' ? 'أدخل مفتاح التفعيل التسلسلي' : lang === 'fr' ? 'Entrez votre clé d\'activation à 16 caractères' : 'Enter your 16-character serial key')
+              ? (lang === 'ar' ? `الخطة المختارة: ${selectedPlanForCheckout.nameAr}` : 'Plan: Personal Yearly License')
+              : (lang === 'ar' ? 'أدخل مفتاح التفعيل التسلسلي' : 'Enter your 16-character serial key')
             }
           </p>
         </div>
@@ -149,7 +144,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
           <div className="bg-[#F8FAFC] p-5 rounded-lg border border-slate-200 space-y-4 text-xs">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <span className="text-slate-600">
-                {lang === 'ar' ? 'القيمة الإجمالية:' : lang === 'fr' ? 'Montant Total:' : 'Total Amount:'}
+                {lang === 'ar' ? 'القيمة الإجمالية:' : 'Total Amount:'}
               </span>
               <span className="text-xl font-extrabold text-[#0D9488]">2,900 دج / DZD</span>
             </div>
@@ -158,19 +153,19 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#0D9488]" />
                 <span>
-                  {lang === 'ar' ? 'قبول فوري بالبطاقة الذهبية بريد الجزائر' : lang === 'fr' ? 'Paiement Carte Edahabia' : 'Edahabia Card Payment'}
+                  {lang === 'ar' ? 'قبول فوري بالبطاقة الذهبية بريد الجزائر' : 'Edahabia Card Payment'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#0D9488]" />
                 <span>
-                  {lang === 'ar' ? 'قبول جميع البطاقات البنكية CIB' : lang === 'fr' ? 'Paiement Carte CIB' : 'CIB Bank Card Payment'}
+                  {lang === 'ar' ? 'قبول جميع البطاقات البنكية CIB' : 'CIB Bank Card Payment'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#0D9488]" />
                 <span>
-                  {lang === 'ar' ? 'توليد تلقائي لمفتاح التفعيل فور نجاح عملية الدفع' : lang === 'fr' ? 'Clé d\'activation générée instantanément' : 'Instant activation key generation'}
+                  {lang === 'ar' ? 'توليد تلقائي لمفتاح التفعيل فور نجاح عملية الدفع' : 'Instant activation key generation'}
                 </span>
               </div>
             </div>
@@ -183,8 +178,8 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
               <CreditCard className="w-4 h-4" />
               <span>
                 {loading
-                  ? (lang === 'ar' ? 'جاري الاتصال بوابات الدفع...' : lang === 'fr' ? 'Connexion en cours...' : 'Connecting to checkout...')
-                  : (lang === 'ar' ? 'إتمام الدفع بالبطاقة الذهبية / CIB' : lang === 'fr' ? 'Payer avec Edahabia / CIB' : 'Pay with Edahabia / CIB')
+                  ? (lang === 'ar' ? 'جاري الاتصال بوابات الدفع...' : 'Connecting to checkout...')
+                  : (lang === 'ar' ? 'إتمام الدفع بالبطاقة الذهبية / CIB' : 'Pay with Edahabia / CIB')
                 }
               </span>
             </button>
@@ -200,10 +195,10 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
 
             <div>
               <h4 className="text-sm font-bold text-[#1E3A8A]">
-                {lang === 'ar' ? 'تم الدفع بنجاح! إليك مفتاح التفعيل الفوري:' : lang === 'fr' ? 'Paiement réussi! Voici votre clé:' : 'Payment successful! Here is your activation key:'}
+                {lang === 'ar' ? 'تم الدفع بنجاح! إليك مفتاح التفعيل الفوري:' : 'Payment successful! Here is your activation key:'}
               </h4>
               <p className="text-[11px] text-slate-500 mt-1">
-                {lang === 'ar' ? 'تم تنشيط رخصة البرنامج' : lang === 'fr' ? 'Votre licence a été activée' : 'Your software license has been activated'}
+                {lang === 'ar' ? 'تم تنشيط رخصة البرنامج' : 'Your software license has been activated'}
               </p>
             </div>
 
@@ -221,7 +216,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
               onClick={onClose}
               className="w-full py-2.5 bg-[#1E3A8A] text-white font-bold text-xs rounded-md shadow-sm"
             >
-              {lang === 'ar' ? 'تم، العودة للبرنامج' : lang === 'fr' ? 'Terminé, retour au logiciel' : 'Done, return to application'}
+              {lang === 'ar' ? 'تم، العودة للبرنامج' : 'Done, return to application'}
             </button>
           </div>
         )}
@@ -231,7 +226,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
           <form onSubmit={handleVerifyKey} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-[#1E3A8A] mb-1.5">
-                {lang === 'ar' ? 'مفتاح التفعيل (Serial Key)' : lang === 'fr' ? 'Clé d\'activation (Serial Key)' : 'Serial Activation Key'}
+                {lang === 'ar' ? 'مفتاح التفعيل (Serial Key)' : 'Serial Activation Key'}
               </label>
               <input
                 type="text"
@@ -249,8 +244,8 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
               className="w-full py-2.5 bg-[#0D9488] hover:bg-teal-700 text-white font-bold text-xs rounded-md shadow-sm transition-colors"
             >
               {loading
-                ? (lang === 'ar' ? 'جاري التحقق...' : lang === 'fr' ? 'Vérification...' : 'Verifying...')
-                : (lang === 'ar' ? 'تنشيط الرخصة الآن' : lang === 'fr' ? 'Activer la licence' : 'Activate License Now')
+                ? (lang === 'ar' ? 'جاري التحقق...' : 'Verifying...')
+                : (lang === 'ar' ? 'تنشيط الرخصة الآن' : 'Activate License Now')
               }
             </button>
           </form>

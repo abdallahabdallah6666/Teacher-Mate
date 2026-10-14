@@ -45,14 +45,10 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
             <Download className="w-6 h-6" />
           </div>
           <h3 className="text-2xl font-bold text-[#1E3A8A]">
-            {lang === 'ar' && 'تنزيل برنامج Teacher Companion'}
-            {lang === 'fr' && 'Télécharger Teacher Companion'}
-            {lang === 'en' && 'Download Teacher Companion'}
+            {lang === 'ar' ? 'تنزيل برنامج Teacher Companion' : 'Download Teacher Companion'}
           </h3>
           <p className="text-xs text-slate-500">
-            {lang === 'ar' && 'اختر نظام التشغيل الخاص بك للبدء'}
-            {lang === 'fr' && 'Choisissez votre système d\'exploitation pour commencer'}
-            {lang === 'en' && 'Choose your operating system to start'}
+            {lang === 'ar' ? 'اختر نظام التشغيل الخاص بك للبدء' : 'Choose your operating system to start'}
           </p>
         </div>
 
@@ -74,9 +70,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
               onClick={() => handleStartDownload('TeacherCompanion_v2.4_Setup.exe')}
               className="px-4 py-2 bg-[#0D9488] hover:bg-teal-700 text-white font-bold text-xs rounded-md shadow-sm transition-colors"
             >
-              {lang === 'ar' && 'تحميل'}
-              {lang === 'fr' && 'Télécharger'}
-              {lang === 'en' && 'Download'}
+              {lang === 'ar' ? 'تحميل' : 'Download'}
             </button>
           </div>
 
@@ -95,9 +89,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
               onClick={() => handleStartDownload('TeacherCompanion_v2.4_Linux.AppImage')}
               className="px-4 py-2 bg-[#1E3A8A] hover:bg-blue-900 text-white font-bold text-xs rounded-md shadow-sm transition-colors"
             >
-              {lang === 'ar' && 'تحميل'}
-              {lang === 'fr' && 'Télécharger'}
-              {lang === 'en' && 'Download'}
+              {lang === 'ar' ? 'تحميل' : 'Download'}
             </button>
           </div>
 
@@ -116,9 +108,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
               onClick={() => handleStartDownload('TeacherCompanion_v2.4_macOS.dmg')}
               className="px-4 py-2 bg-[#1E3A8A] hover:bg-blue-900 text-white font-bold text-xs rounded-md shadow-sm transition-colors"
             >
-              {lang === 'ar' && 'تحميل'}
-              {lang === 'fr' && 'Télécharger'}
-              {lang === 'en' && 'Download'}
+              {lang === 'ar' ? 'تحميل' : 'Download'}
             </button>
           </div>
 

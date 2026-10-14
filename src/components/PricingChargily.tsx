@@ -10,10 +10,9 @@ interface PricingProps {
 
 export const ANNUAL_PLAN: LicensePlan = {
   id: 'pro',
-  nameAr: 'الاشتراك السنوي لبرنامج رفيق المعلم',
-  nameFr: 'Abonnement Annuel Teacher Companion',
-  priceDZD: 2900,
-  period: 'سنة كاملة (3AP + 4AP + 5AP)',
+  nameAr: 'الرخصة السنوية الشخصية (Personal Yearly License)',
+  priceDZD: 3000,
+  period: 'سنة كاملة / جهاز حاسوب واحد (1 PC)',
   popular: true,
   featuresAr: [
     'وصول شامل لجميع سنوات التعليم الابتدائي (3AP, 4AP, 5AP)',
@@ -23,17 +22,7 @@ export const ANNUAL_PLAN: LicensePlan = {
     'منظومة تقييم مكتسبات مادة اللغة الإنجليزية (5AP)',
     'دفتر العلامات وحساب المعدلات الفصلية لجميع الأفواج',
     'مخطط تنظيم القسم والمجموعات الطاولية',
-    'عمل 100% بدون إنترنت مع كافة التحديثات السنوية'
-  ],
-  featuresFr: [
-    'Accès complet à tous les niveaux du primaire (3AP, 4AP, 5AP)',
-    'Génération de fiches pédagogiques par IA',
-    'Atelier de phonétique et tracé des lettres (Phonics)',
-    'Création de cartes illustrées (Flashcards)',
-    'Évaluation des acquis en langue anglaise (5AP)',
-    'Carnet de notes et calcul automatique des moyennes',
-    'Planificateur de classe et groupes d\'élèves',
-    'Fonctionne 100% hors-ligne avec mises à jour'
+    'تفعيل شامل لحساب الأستاذ على جهاز حاسوب واحد (1 PC)'
   ]
 };
 
@@ -45,7 +34,7 @@ const FEATURES_EN = [
   'Primary English competency assessment system (5AP)',
   'Gradebook & automatic term average calculation',
   'Classroom seating plan & group planner',
-  '100% Offline execution with all annual updates'
+  'Full teacher license access for 1 PC'
 ];
 
 export const PricingChargily: React.FC<PricingProps> = ({ lang, onSelectPlanForCheckout }) => {
@@ -53,38 +42,38 @@ export const PricingChargily: React.FC<PricingProps> = ({ lang, onSelectPlanForC
 
   useEffect(() => {
     fetch('/api/pricing')
-      .then(res => res.json())
+      .then(async res => {
+        if (!res.ok) return null;
+        const ct = res.headers.get('content-type');
+        if (!ct || !ct.includes('application/json')) return null;
+        return res.json();
+      })
       .then(data => {
         if (data && data.plans) {
           setPricingSettings(data);
         }
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error('Failed to load pricing:', err));
   }, []);
 
   const proPlanConfig = pricingSettings?.plans?.pro;
-  const currentPrice = proPlanConfig ? proPlanConfig.priceDZD : 2900;
+  const currentPrice = proPlanConfig ? proPlanConfig.priceDZD : 3000;
   const promoNotice = lang === 'ar'
     ? pricingSettings?.promoNoticeAr
-    : lang === 'fr'
-    ? pricingSettings?.promoNoticeFr
     : pricingSettings?.promoNoticeEn;
 
   const dynamicPlan: LicensePlan = {
     ...ANNUAL_PLAN,
     priceDZD: currentPrice,
     featuresAr: proPlanConfig?.featuresAr || ANNUAL_PLAN.featuresAr,
-    featuresFr: proPlanConfig?.featuresFr || ANNUAL_PLAN.featuresFr,
   };
 
   const getFeatures = () => {
     if (proPlanConfig) {
       if (lang === 'ar') return proPlanConfig.featuresAr;
-      if (lang === 'fr') return proPlanConfig.featuresFr;
       return proPlanConfig.featuresEn || FEATURES_EN;
     }
     if (lang === 'ar') return ANNUAL_PLAN.featuresAr;
-    if (lang === 'fr') return ANNUAL_PLAN.featuresFr;
     return FEATURES_EN;
   };
 
@@ -96,20 +85,16 @@ export const PricingChargily: React.FC<PricingProps> = ({ lang, onSelectPlanForC
         <div className="text-center max-w-3xl mx-auto mb-12 space-y-3">
           <div className="inline-block px-3.5 py-1 bg-[#0D9488] text-white text-[11px] font-bold uppercase tracking-widest rounded-full shadow-sm">
             <span>
-              {lang === 'ar' && 'الدفع الإلكتروني الآمن'}
-              {lang === 'fr' && 'Paiement Sécurisé'}
-              {lang === 'en' && 'Secure Online Payment'}
+              {lang === 'ar' ? 'الدفع الإلكتروني الآمن' : 'Secure Online Payment'}
             </span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1E3A8A]">
-            {lang === 'ar' && 'الاشتراك السنوي لبرنامج رفيق المعلم'}
-            {lang === 'fr' && 'Abonnement Annuel Teacher Companion'}
-            {lang === 'en' && 'Annual Subscription for Teacher Companion'}
+            {lang === 'ar' ? 'الرخصة السنوية الشخصية (Personal Yearly License)' : 'Personal Yearly License'}
           </h2>
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            {lang === 'ar' && 'اشترك الآن عبر البطاقة الذهبية (Edahabia) أو بطاقة CIB البنكية للحصول على مفتاح التفعيل الفوري للبرنامج لمدة سنة كاملة.'}
-            {lang === 'fr' && 'Abonnez-vous en toute sécurité via la carte Edahabia ou CIB avec activation automatique instantanée.'}
-            {lang === 'en' && 'Subscribe securely using your Edahabia or CIB bank card and receive your instant activation key.'}
+            {lang === 'ar'
+              ? 'اشترك الآن عبر البطاقة الذهبية (Edahabia) أو بطاقة CIB البنكية للحصول على مفتاح التفعيل الفوري للبرنامج لمدة سنة كاملة.'
+              : 'Subscribe securely using your Edahabia or CIB bank card and receive your instant activation key.'}
           </p>
 
           {promoNotice && (
@@ -127,23 +112,17 @@ export const PricingChargily: React.FC<PricingProps> = ({ lang, onSelectPlanForC
             <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#0D9488] text-white text-[11px] font-extrabold px-4 py-1 rounded-full shadow-sm flex items-center gap-1.5 uppercase tracking-wide">
               <Sparkles className="w-3.5 h-3.5" />
               <span>
-                {lang === 'ar' && (proPlanConfig?.badgeAr || 'الاشتراك السنوي الموصى به')}
-                {lang === 'fr' && (proPlanConfig?.badgeFr || 'Abonnement Annuel Recommandé')}
-                {lang === 'en' && (proPlanConfig?.badgeEn || 'Recommended Annual Plan')}
+                {lang === 'ar' ? (proPlanConfig?.badgeAr || 'الاشتراك السنوي الموصى به') : (proPlanConfig?.badgeEn || 'Recommended Annual Plan')}
               </span>
             </div>
 
             <div className="space-y-6 pt-2">
               <div className="text-center border-b border-slate-100 pb-6 space-y-2">
                 <h3 className="text-2xl font-extrabold text-[#1E3A8A]">
-                  {lang === 'ar' && (proPlanConfig?.nameAr || 'الاشتراك السنوي الشامل')}
-                  {lang === 'fr' && (proPlanConfig?.nameFr || 'Abonnement Annuel Complet')}
-                  {lang === 'en' && (proPlanConfig?.nameEn || 'Full Annual Subscription')}
+                  {lang === 'ar' ? (proPlanConfig?.nameAr || 'الرخصة السنوية الشخصية (Personal Yearly License)') : (proPlanConfig?.nameEn || 'Personal Yearly License')}
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  {lang === 'ar' && 'سنة كاملة لكافة مستويات الابتدائي (3AP + 4AP + 5AP)'}
-                  {lang === 'fr' && '1 an complet pour tous les niveaux (3AP + 4AP + 5AP)'}
-                  {lang === 'en' && '1 full year access for all grade levels (3AP + 4AP + 5AP)'}
+                  {lang === 'ar' ? 'سنة كاملة لجهاز حاسوب واحد (1 PC) لكافة مستويات الابتدائي' : '1 full year access for 1 PC across all grade levels (3AP + 4AP + 5AP)'}
                 </p>
 
                 <div className="pt-4 flex items-baseline justify-center gap-2">
@@ -154,9 +133,7 @@ export const PricingChargily: React.FC<PricingProps> = ({ lang, onSelectPlanForC
                     {pricingSettings?.currencyDZD || 'دج / DZD'}
                   </span>
                   <span className="text-xs text-slate-500 font-semibold">
-                    {lang === 'ar' && '/ سنوياً'}
-                    {lang === 'fr' && '/ an'}
-                    {lang === 'en' && '/ year'}
+                    {lang === 'ar' ? '/ سنوياً' : '/ year'}
                   </span>
                 </div>
               </div>
@@ -179,9 +156,7 @@ export const PricingChargily: React.FC<PricingProps> = ({ lang, onSelectPlanForC
               >
                 <CreditCard className="w-5 h-5 text-white" />
                 <span>
-                  {lang === 'ar' && 'اشترك الآن'}
-                  {lang === 'fr' && 'S\'abonner'}
-                  {lang === 'en' && 'Subscribe Now'}
+                  {lang === 'ar' ? 'اشترك الآن' : 'Subscribe Now'}
                 </span>
               </button>
             </div>

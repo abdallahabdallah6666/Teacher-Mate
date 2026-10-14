@@ -5,12 +5,9 @@ import { eq } from 'drizzle-orm';
 export interface UpsertUserData {
   uid: string;
   email: string;
-  firstName?: string;
-  lastName?: string;
   fullName?: string;
   role?: string;
   wilaya?: string;
-  schoolName?: string;
   primaryGrade?: string;
   licenseKey?: string;
   licenseStatus?: string;
@@ -36,12 +33,9 @@ export async function getOrCreateUser(uid: string, email: string, extraData: Par
       .values({
         uid,
         email,
-        firstName: extraData.firstName,
-        lastName: extraData.lastName,
-        fullName: extraData.fullName || (extraData.firstName && extraData.lastName ? `${extraData.firstName} ${extraData.lastName}` : undefined),
+        fullName: extraData.fullName || 'User',
         role: extraData.role || (email.toLowerCase().includes('admin') ? 'admin' : 'user'),
         wilaya: extraData.wilaya,
-        schoolName: extraData.schoolName,
         primaryGrade: extraData.primaryGrade || '4AP',
         licenseKey: extraData.licenseKey,
         licenseStatus: extraData.licenseStatus || 'trial',
@@ -54,7 +48,6 @@ export async function getOrCreateUser(uid: string, email: string, extraData: Par
           ...(extraData.fullName ? { fullName: extraData.fullName } : {}),
           ...(extraData.role ? { role: extraData.role } : {}),
           ...(extraData.wilaya ? { wilaya: extraData.wilaya } : {}),
-          ...(extraData.schoolName ? { schoolName: extraData.schoolName } : {}),
           ...(extraData.licenseKey ? { licenseKey: extraData.licenseKey } : {}),
           ...(extraData.licenseStatus ? { licenseStatus: extraData.licenseStatus } : {}),
         },

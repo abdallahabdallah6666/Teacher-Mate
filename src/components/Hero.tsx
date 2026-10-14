@@ -31,24 +31,20 @@ export const Hero: React.FC<HeroProps> = ({
             <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-[#0D9488] text-white text-[11px] font-extrabold uppercase tracking-widest rounded-full shadow-sm">
               <ShieldCheck className="w-4 h-4 text-white" />
               <span>
-                {lang === 'ar' && 'برنامج سطح المكتب لأستاذ اللغة الإنجليزية بالتعليم الابتدائي (3AP, 4AP, 5AP)'}
-                {lang === 'fr' && 'Logiciel PC pour enseignants d\'Anglais du Primaire (3AP, 4AP, 5AP)'}
-                {lang === 'en' && 'Desktop Suite for Primary English Teachers in Algeria (3AP, 4AP, 5AP)'}
+                {lang === 'ar' ? 'برنامج سطح المكتب لأستاذ اللغة الإنجليزية بالتعليم الابتدائي (3AP, 4AP, 5AP)' : 'Desktop Suite for Primary English Teachers in Algeria (3AP, 4AP, 5AP)'}
               </span>
             </div>
 
             {/* Main Title */}
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight tracking-tight text-white">
-              {lang === 'ar' && 'منظومة سطح المكتب المتكاملة لأستاذ اللغة الإنجليزية بالابتدائي الجزائري'}
-              {lang === 'fr' && 'La suite logicielle complète pour les enseignants d\'Anglais du Primaire en Algérie'}
-              {lang === 'en' && 'The Complete Desktop Companion for Primary English Teachers in Algeria'}
+              {lang === 'ar' ? 'منظومة سطح المكتب المتكاملة لأستاذ اللغة الإنجليزية بالابتدائي الجزائري' : 'The Complete Desktop Companion for Primary English Teachers in Algeria'}
             </h1>
 
             {/* Subtitle */}
             <p className="text-blue-100 text-base sm:text-lg leading-relaxed font-normal">
-              {lang === 'ar' && 'برنامج حاسوب يعمل 100% بدون إنترنت. مصمم خصيصاً لمرافقة أستاذ الإنجليزية في إعداد المذكرات التربوية الذكية (AI Fiches)، أوراق عمل الصوتيات والحروف (Phonics)، البطاقات المصورة (Flashcards)، تقييم مكتسبات 5AP، وكشوف النقاط وفق منهاج My Book of English.'}
-              {lang === 'fr' && 'Logiciel PC fonctionnant 100% hors-ligne. Conçu spécifiquement pour accompagner l\'enseignant d\'Anglais dans la génération de fiches pédagogiques IA, fiches d\'exercices de phonétique, cartes d\'images (Flashcards), évaluations des acquis 5AP et carnets de notes selon le programme officiel My Book of English.'}
-              {lang === 'en' && 'Offline desktop workspace for Algerian primary English teachers. Generate AI lesson plans, phonics worksheets, vocabulary flashcards, 5AP English competency evaluations, and gradebooks seamlessly.'}
+              {lang === 'ar'
+                ? 'برنامج حاسوب يعمل 100% بدون إنترنت. مصمم خصيصاً لمرافقة أستاذ الإنجليزية في إعداد المذكرات التربوية الذكية (AI Fiches)، أوراق عمل الصوتيات والحروف (Phonics)، البطاقات المصورة (Flashcards)، تقييم مكتسبات 5AP، وكشوف النقاط وفق منهاج My Book of English.'
+                : 'Offline desktop workspace for Algerian primary English teachers. Generate AI lesson plans, phonics worksheets, vocabulary flashcards, 5AP English competency evaluations, and gradebooks seamlessly.'}
             </p>
 
             {/* Action Buttons: Download, Subscribe Now, and Log In */}
@@ -59,9 +55,7 @@ export const Hero: React.FC<HeroProps> = ({
               >
                 <Download className="w-5 h-5 text-[#1E3A8A]" />
                 <span>
-                  {lang === 'ar' && 'تحميل'}
-                  {lang === 'fr' && 'Télécharger'}
-                  {lang === 'en' && 'Download'}
+                  {lang === 'ar' ? 'تحميل البرنامج' : 'Download'}
                 </span>
               </button>
 
@@ -71,9 +65,7 @@ export const Hero: React.FC<HeroProps> = ({
               >
                 <CreditCard className="w-5 h-5 text-white" />
                 <span>
-                  {lang === 'ar' && 'اشترك الآن'}
-                  {lang === 'fr' && 'S\'abonner'}
-                  {lang === 'en' && 'Subscribe Now'}
+                  {lang === 'ar' ? 'اشترك الآن' : 'Subscribe Now'}
                 </span>
               </button>
 
@@ -83,9 +75,7 @@ export const Hero: React.FC<HeroProps> = ({
               >
                 <LogIn className="w-5 h-5 text-teal-300" />
                 <span>
-                  {lang === 'ar' && 'تسجيل الدخول'}
-                  {lang === 'fr' && 'Se connecter'}
-                  {lang === 'en' && 'Log In'}
+                  {lang === 'ar' ? 'تسجيل الدخول' : 'Log In'}
                 </span>
               </button>
             </div>
@@ -95,25 +85,19 @@ export const Hero: React.FC<HeroProps> = ({
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#0D9488] fill-[#0D9488]/20" />
                 <span>
-                  {lang === 'ar' && 'منهاج اللغة الإنجليزية الجيل الثاني (My Book of English)'}
-                  {lang === 'fr' && 'Programme officiel d\'Anglais (My Book of English)'}
-                  {lang === 'en' && 'Official Algerian Curriculum (My Book of English)'}
+                  {lang === 'ar' ? 'منهاج اللغة الإنجليزية الجيل الثاني (My Book of English)' : 'Official Algerian Curriculum (My Book of English)'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#0D9488] fill-[#0D9488]/20" />
                 <span>
-                  {lang === 'ar' && 'تفعيل آلي بواسطة الذهبية / CIB عبر Chargily'}
-                  {lang === 'fr' && 'Activation instantanée via Edahabia / CIB (Chargily)'}
-                  {lang === 'en' && 'Chargily Pay Instant License (Edahabia / CIB)'}
+                  {lang === 'ar' ? 'تفعيل فوري وآمن بالبطاقة الذهبية / CIB (Chargily Pay)' : 'Instant License via Edahabia & CIB (Chargily Pay)'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#0D9488] fill-[#0D9488]/20" />
                 <span>
-                  {lang === 'ar' && 'يعمل 100% بدون إنترنت على الكمبيوتر'}
-                  {lang === 'fr' && 'Fonctionne 100% Hors-ligne sur PC'}
-                  {lang === 'en' && '100% Offline PC Software'}
+                  {lang === 'ar' ? 'يعمل 100% بدون إنترنت على أجهزة الحاسوب' : '100% Offline PC Software'}
                 </span>
               </div>
             </div>

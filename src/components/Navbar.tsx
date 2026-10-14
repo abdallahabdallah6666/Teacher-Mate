@@ -2,7 +2,7 @@ import React from 'react';
 import { BookOpenCheck, Globe, ChevronDown, LogIn, LayoutDashboard, UserCheck } from 'lucide-react';
 import { UserProfile } from '../types';
 
-export type Language = 'ar' | 'fr' | 'en';
+export type Language = 'ar' | 'en';
 
 interface NavbarProps {
   activeLang: Language;
@@ -39,9 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Teacher Companion
               </span>
               <span className="text-[10px] font-bold text-[#0D9488]">
-                {activeLang === 'ar' && 'طبعة أستاذ اللغة الإنجليزية بالجزائر'}
-                {activeLang === 'fr' && 'Édition Enseignant d\'Anglais'}
-                {activeLang === 'en' && 'Algerian Primary English Edition'}
+                {activeLang === 'ar' ? 'طبعة أستاذ اللغة الإنجليزية بالجزائر' : 'Algerian Primary English Edition'}
               </span>
             </div>
           </div>
@@ -57,9 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <LayoutDashboard className="w-4 h-4 text-[#0D9488]" />
                 <span>
-                  {activeLang === 'ar' && 'مساحة Hub الأساتذة'}
-                  {activeLang === 'fr' && 'Espace Hub'}
-                  {activeLang === 'en' && 'Teacher Hub'}
+                  {activeLang === 'ar' ? 'مساحة Hub الأساتذة' : 'Teacher Hub'}
                 </span>
               </button>
             ) : (
@@ -69,14 +65,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <LogIn className="w-4 h-4 text-[#1E3A8A]" />
                 <span>
-                  {activeLang === 'ar' && 'تسجيل الدخول'}
-                  {activeLang === 'fr' && 'Se connecter'}
-                  {activeLang === 'en' && 'Log In'}
+                  {activeLang === 'ar' ? 'تسجيل الدخول' : 'Log In'}
                 </span>
               </button>
             )}
 
-            {/* Language Selector Dropdown */}
+            {/* Language Selector Dropdown (Arabic & English Only) */}
             <div className="relative flex items-center">
               <Globe className="w-4 h-4 text-[#0D9488] absolute left-2.5 rtl:right-2.5 pointer-events-none z-10" />
               <select
@@ -84,8 +78,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onChange={(e) => onChangeLang(e.target.value as Language)}
                 className="appearance-none bg-slate-100 text-slate-800 text-xs font-bold pl-8 pr-7 rtl:pr-8 rtl:pl-7 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0D9488] cursor-pointer hover:bg-slate-200 transition-colors"
               >
-                <option value="ar">العربية (Ar)</option>
-                <option value="fr">Français (Fr)</option>
+                <option value="ar">العربية (Arabic)</option>
                 <option value="en">English (En)</option>
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2 rtl:left-2 pointer-events-none z-10" />

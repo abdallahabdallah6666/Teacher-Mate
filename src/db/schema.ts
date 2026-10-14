@@ -1,16 +1,13 @@
-import { pgTable, serial, text, integer, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, uuid, jsonb, bigint } from 'drizzle-orm/pg-core';
 
 // Users table with uid as unique Firebase Auth identifier
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   uid: text('uid').notNull().unique(),
   email: text('email').notNull().unique(),
-  firstName: text('first_name'),
-  lastName: text('last_name'),
-  fullName: text('full_name'),
+  fullName: text('full_name').notNull(),
   role: text('role').default('user'),
   wilaya: text('wilaya'),
-  schoolName: text('school_name'),
   primaryGrade: text('primary_grade').default('4AP'),
   licenseKey: text('license_key'),
   licenseStatus: text('license_status').default('trial'),
@@ -62,3 +59,47 @@ export const inquiries = pgTable('inquiries', {
   status: text('status').default('open'),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+// Teacher Mate Payment Orders (for durable checkout and fulfillment)
+export const paymentOrders = pgTable('teacher_mate_payment_orders', {
+  orderId: uuid('order_id').primaryKey(),
+  checkoutId: text('checkout_id').unique(),
+  orderData: jsonb('order_data').notNull(),
+  processingLeaseUntil: bigint('processing_lease_until', { mode: 'number' }).notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Teacher Mate Chargily Webhook Events (for idempotency and distributed locking)
+export const paymentEvents = pgTable('teacher_mate_chargily_events', {
+  eventId: text('event_id').primaryKey(),
+  eventType: text('event_type').notNull(),
+  status: text('status').notNull(),
+  leaseUntil: bigint('lease_until', { mode: 'number' }).notNull().default(0),
+  attempts: integer('attempts').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Pricing Settings table for persisting plan pricing and details across app restarts
+export const pricingSettingsTable = pgTable('pricing_settings', {
+  id: text('id').primaryKey().default('current'),
+  currencyDZD: text('currency_dzd').default('دج / DZD'),
+  promoNoticeAr: text('promo_notice_ar'),
+  promoNoticeFr: text('promo_notice_fr'),
+  promoNoticeEn: text('promo_notice_en'),
+  plans: jsonb('plans').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// Promo Codes
+export const promoCodes = pgTable('promo_codes', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  discountPercent: integer('discount_percent').notNull(),
+  isActive: integer('is_active').default(1),
+  maxUses: integer('max_uses'),
+  uses: integer('uses').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+
